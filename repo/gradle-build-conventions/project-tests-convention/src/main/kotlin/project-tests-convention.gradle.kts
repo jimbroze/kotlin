@@ -23,11 +23,15 @@ fun Test.configureCacheDisabling() {
 }
 
 fun Test.configureJvmArgumentProviders() {
+    val testTask = this
     val testCompilerRuntimeProvider = objects.newInstance<TestCompilerRuntimeArgumentProvider>().apply {
         testDataMap.set(extension.testDataMap)
         testDataFiles.set(extension.testDataFiles)
     }
-    jvmArgumentProviders.add(testCompilerRuntimeProvider)
+    val javaModuleAddOpensProvider = objects.newInstance<JavaModuleAddOpensArgumentProvider>().apply {
+        javaLauncher.set(testTask.javaLauncher)
+    }
+    jvmArgumentProviders.addAll(listOf(testCompilerRuntimeProvider, javaModuleAddOpensProvider))
 }
 
 fun Test.configureDevelocityTestRetry() {
