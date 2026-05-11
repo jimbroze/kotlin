@@ -1,24 +1,41 @@
+import org.gradle.internal.os.OperatingSystem
+
 val extension = extensions.create("projectTests", ProjectTestsExtension::class)
 
-val provider = objects.newInstance<TestCompilerRuntimeArgumentProvider>().apply {
-    testDataMap.value(extension.testDataMap)
-    testDataFiles.value(extension.testDataFiles)
+tasks.withType<Test>().configureEach {
+    ignoreFailures = false
+    addCommonInputs()
+    configureCacheDisabling()
+    configureJvmArgumentProviders()
+    configureDevelocityTestRetry()
 }
 
-tasks.withType<Test>().configureEach {
-    val disableTestsCache = providers.gradleProperty("kotlin.build.cache.tests.disabled").orElse("false")
-    outputs.doNotCacheIf("Caching tests is manually disabled using `kotlin.build.cache.tests.disabled` property") { disableTestsCache.get() == "true" }
-    outputs.upToDateWhen { !disableTestsCache.orNull.toBoolean() }
-    jvmArgumentProviders.add(provider)
-    inputs.property("os.name", org.gradle.internal.os.OperatingSystem.current().name)
+fun Test.addCommonInputs() {
+    inputs.property("os.name", OperatingSystem.current().name)
+}
 
+fun Test.configureCacheDisabling() {
     val rootDir = project.rootDir
-    outputs.doNotCacheIf("`workingDir` shouldn't be set to `rootDir`") { workingDir == rootDir }
+    val testCacheDisabled = providers.gradleProperty("kotlin.build.cache.tests.disabled").orElse("false").get().toBoolean()
+    outputs.upToDateWhen { !testCacheDisabled }
+    outputs.doNotCacheIf("Caching tests is manually disabled using `kotlin.build.cache.tests.disabled` property") { testCacheDisabled }
+    outputs.doNotCacheIf("Caching tests is disabled because `workingDir` is set to `rootDir`") { workingDir == rootDir }
+}
+
+fun Test.configureJvmArgumentProviders() {
+    val testCompilerRuntimeProvider = objects.newInstance<TestCompilerRuntimeArgumentProvider>().apply {
+        testDataMap.set(extension.testDataMap)
+        testDataFiles.set(extension.testDataFiles)
+    }
+    jvmArgumentProviders.add(testCompilerRuntimeProvider)
+}
+
+fun Test.configureDevelocityTestRetry() {
+    val maxRetriesFromProperty = kotlinBuildProperties.intProperty("kotlin.build.testRetry.maxRetries")
+    val defaultMaxRetries = kotlinBuildProperties.isTeamcityBuild.map { if (it) 3 else 0 }
 
     develocity.testRetry {
-        maxRetries.set(kotlinBuildProperties.intProperty("kotlin.build.testRetry.maxRetries")
-                           .orElse(kotlinBuildProperties.isTeamcityBuild.map { if (it) 3 else 0 }))
+        maxRetries.set(maxRetriesFromProperty.orElse(defaultMaxRetries))
         failOnPassedAfterRetry.set(extension.allowFlaky.convention(true).map { !it })
     }
-    ignoreFailures = false
 }
