@@ -274,6 +274,61 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
         )
     }
 
+    /**
+     * Tests that [KotlinPackageProvider.doesKotlinOnlyPackageExist] and [KotlinDeclarationProvider.computePackageNames] agree on which
+     * packages exist for a KLib library module (KT-83760).
+     *
+     * Before the fix, [KotlinDeclarationProvider.computePackageNames] returned `null` for KLib modules while [KotlinPackageProvider]
+     * correctly reported their packages. This test verifies the two providers are now consistent.
+     */
+    @Test
+    fun testKlibPackageProviderAndDeclarationProviderAreConsistent() {
+        val sharedPlatform = JsPlatforms.defaultJsPlatform
+
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.stdlibJsForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib-js"
+                    }
+                )
+
+                platform = sharedPlatform
+                addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(libraryModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
+            }
+        }
+
+        val packageProvider = libraryModule.project.createPackageProvider(libraryModule.contentScope)
+        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
+
+        val packageNamesFromDeclarationProvider = declarationProvider.computePackageNames()
+        assertNotNull(packageNamesFromDeclarationProvider, "computePackageNames() must return non-null for a KLib library module")
+
+        // Every package reported by computePackageNames() must also be known to the package provider
+        for (packageName in packageNamesFromDeclarationProvider) {
+            val fqName = FqName(packageName)
+            assertTrue(
+                packageProvider.doesKotlinOnlyPackageExist(fqName),
+                "Package '$packageName' is in computePackageNames() but doesKotlinOnlyPackageExist() returns false for it",
+            )
+        }
+
+        // Spot-check: a known stdlib package must be in both providers
+        val kotlinFqName = FqName("kotlin")
+        assertTrue(packageProvider.doesKotlinOnlyPackageExist(kotlinFqName), "Package 'kotlin' must exist in the package provider")
+        assertTrue("kotlin" in packageNamesFromDeclarationProvider, "Package 'kotlin' must be in computePackageNames()")
+    }
+
     private class PackageProviderTestContext(
         private val session: KaSession,
         private val packageProvider: KotlinPackageProvider,
