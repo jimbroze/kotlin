@@ -33,7 +33,7 @@ class KotlinStandaloneDeclarationProvider internal constructor(
     private val contextualModule: KaModule?,
     private val environment: CoreApplicationEnvironment,
     private val shouldComputeBinaryLibraryPackageSets: Boolean,
-    private val packageNamesProvider: KotlinStandalonePackageNamesProvider?,
+    private val packageNamesProvider: KotlinStandalonePackageNamesProvider,
 ) : KotlinDeclarationProvider {
     private val KtElement.inScope: Boolean
         get() = containingKtFile.virtualFile in scope
@@ -98,7 +98,7 @@ class KotlinStandaloneDeclarationProvider internal constructor(
                 if (contextualModule.canComputePackageSetFromIndex) {
                     computePackageSetFromIndex()
                 } else {
-                    packageNamesProvider?.getPackageNamesInScope(scope)?.mapTo(mutableSetOf()) { it.asString() }
+                    packageNamesProvider.getPackageNamesInScope(scope)?.mapTo(mutableSetOf()) { it.asString() }
                         ?: computeBinaryLibraryModulePackageSet(contextualModule)
                 }
 
@@ -192,9 +192,14 @@ class KotlinStandaloneDeclarationProvider internal constructor(
  * @param binaryRoots Binary roots of the binary libraries that are specific to [project].
  * @param sharedBinaryRoots Binary roots that are shared between multiple different projects. This allows Kotlin tests to cache stubs for
  *  shared libraries like the Kotlin stdlib.
- * @param shouldComputeBinaryLibraryPackageSets Whether to compute package sets for binary libraries when they are NOT indexed by default.
- *  It is risky to enable this in production because in some file systems, file traversal can be slow. So we shouldn't enable this without
- *  further investigation.
+ * @param shouldComputeBinaryLibraryPackageSets Whether to compute package sets for binary libraries that are not indexed by default by
+ *  walking JAR contents (see `computeBinaryLibraryModulePackageSet`). This governs only the JAR-traversal fallback; KLib package
+ *  computation runs unconditionally through [packageNamesProvider]. It is risky to enable JAR traversal in production because in some
+ *  file systems, file traversal can be slow. So we shouldn't enable this without further investigation.
+ * @param packageNamesProvider Shared source of KLib package names, also used by `KotlinStandalonePackageProviderFactory` so both providers
+ *  report consistent package sets (KT-83760). The provider may reference KtFiles that this factory creates lazily through
+ *  [getAdditionalCreatedKtFiles], so callers should pass a provider whose `indexedFilesProvider` defers reading those files until first
+ *  use.
  * @param postponeIndexing Whether to postpone indexing until the first access.
  *  This is useful for tests to reduce the startup time and potentially avoid redundant indexing (which might be heavy, especially if stubs are used).
  */
@@ -202,6 +207,7 @@ class KotlinStandaloneDeclarationProviderFactory(
     private val project: Project,
     private val environment: CoreApplicationEnvironment,
     sourceKtFiles: Collection<KtFile>,
+    private val packageNamesProvider: KotlinStandalonePackageNamesProvider,
     binaryRoots: List<VirtualFile> = emptyList(),
     sharedBinaryRoots: List<VirtualFile> = emptyList(),
     skipBuiltins: Boolean = false,
@@ -236,19 +242,6 @@ class KotlinStandaloneDeclarationProviderFactory(
     private val index: KotlinStandaloneDeclarationIndex
         get() = indexData.index
 
-    private var packageNamesProvider: KotlinStandalonePackageNamesProvider? = null
-
-    /**
-     * Sets the [KotlinStandalonePackageNamesProvider] shared with [KotlinStandalonePackageProviderFactory].
-     *
-     * Must be called by the session builder after this factory is registered and after
-     * [getAdditionalCreatedKtFiles] has been used to populate the provider, but before any
-     * [createDeclarationProvider] call. Not intended for use outside of session setup.
-     */
-    fun setPackageNamesProvider(provider: KotlinStandalonePackageNamesProvider) {
-        packageNamesProvider = provider
-    }
-
     override fun createDeclarationProvider(scope: GlobalSearchScope, contextualModule: KaModule?): KotlinDeclarationProvider {
         return KotlinStandaloneDeclarationProvider(
             index,
@@ -256,7 +249,7 @@ class KotlinStandaloneDeclarationProviderFactory(
             contextualModule,
             environment,
             shouldComputeBinaryLibraryPackageSets,
-            packageNamesProvider
+            packageNamesProvider,
         )
     }
 

@@ -30,16 +30,19 @@ import kotlin.io.path.extension
  * which is important for JAR-based library modules that are handled through separate platform-specific mechanisms.
  */
 class KotlinStandalonePackageNamesProvider(
-    indexedFiles: Collection<KtFile>,
+    indexedFilesProvider: () -> Collection<KtFile>,
     libraryRoots: List<VirtualFile>,
 ) {
-    private val sourceFilePackages: List<Pair<VirtualFile, FqName>> = indexedFiles.mapNotNull { ktFile ->
-        ktFile.virtualFile?.let { it to ktFile.packageFqName }
+    private val sourceFilePackages: List<Pair<VirtualFile, FqName>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        indexedFilesProvider().mapNotNull { ktFile ->
+            ktFile.virtualFile?.let { it to ktFile.packageFqName }
+        }
     }
 
     /**
      * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file that contains it. Only KLib roots are included;
-     * JAR roots are omitted because their packages are handled separately (see [KotlinStandalonePackageNamesProvider]).
+     * JAR roots are omitted because their packages are handled separately by
+     * `KotlinStandaloneDeclarationProvider.computeBinaryLibraryModulePackageSet`.
      */
     private val klibFiles: Map<VirtualFile, Path> = buildMap {
         for (libraryRoot in libraryRoots) {

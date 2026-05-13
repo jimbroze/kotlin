@@ -152,22 +152,23 @@ public class StandaloneAnalysisAPISessionBuilder(
             registerService(KotlinModificationTrackerFactory::class.java, KotlinStandaloneModificationTrackerFactory::class.java)
 
             registerService(KotlinAnnotationsResolverFactory::class.java, KotlinStandaloneAnnotationsResolverFactory(this, sourceKtFiles))
-            val declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
+
+            lateinit var declarationProviderFactory: KotlinStandaloneDeclarationProviderFactory
+            val packageNamesProvider = KotlinStandalonePackageNamesProvider(
+                indexedFilesProvider = { sourceKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles() },
+                libraryRoots = libraryRoots,
+            )
+            declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
                 this,
                 kotlinCoreProjectEnvironment.environment,
                 sourceKtFiles,
+                packageNamesProvider,
             )
             registerService(
                 KotlinDeclarationProviderFactory::class.java,
                 declarationProviderFactory
             )
             registerService(KotlinDeclarationProviderMerger::class.java, KotlinStandaloneDeclarationProviderMerger(this))
-
-            val packageNamesProvider = KotlinStandalonePackageNamesProvider(
-                sourceKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles(),
-                libraryRoots,
-            )
-            declarationProviderFactory.setPackageNamesProvider(packageNamesProvider)
 
             registerService(
                 KotlinPackageProviderFactory::class.java,
