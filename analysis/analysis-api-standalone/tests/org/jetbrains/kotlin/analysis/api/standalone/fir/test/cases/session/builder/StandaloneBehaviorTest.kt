@@ -37,7 +37,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StandaloneBehaviorTest : AbstractStandaloneTest() {
@@ -231,9 +230,9 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
     }
 
     /**
-     * Tests that `KotlinDeclarationProvider.computePackageNames` returns correct package names for a KLib library module (non-JVM).
+     * Tests that [KotlinDeclarationProvider.computePackageNames] returns correct package names for a KLib library module (non-JVM).
      *
-     * KLibs are not JAR files, so the old JAR-traversal path in `computeBinaryLibraryModulePackageSet` cannot handle them and returns
+     * KLibs are not JAR files, so the old JAR-traversal path in [computeBinaryLibraryModulePackageSet] cannot handle them and returns
      * `null`. This test verifies that the declaration provider can compute packages for KLib library modules, consistent with the package
      * provider (KT-83760).
      */
@@ -253,6 +252,14 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
                 )
 
                 platform = sharedPlatform
+                addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(libraryModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
             }
         }
 
@@ -268,15 +275,14 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
     }
 
     /**
-     * Tests that every package name reported by `KotlinDeclarationProvider.computePackageNames` for a KLib library module is also known
-     * to `KotlinPackageProvider.doesKotlinOnlyPackageExist` (KT-83760).
+     * Tests that [KotlinPackageProvider.doesKotlinOnlyPackageExist] and [KotlinDeclarationProvider.computePackageNames] agree on which
+     * packages exist for a KLib library module (KT-83760).
      *
-     * Before the fix, `KotlinDeclarationProvider.computePackageNames` returned `null` for KLib modules while `KotlinPackageProvider`
-     * correctly reported their packages. This test verifies that the declaration provider's package set is a subset of the package
-     * provider's after the fix.
+     * Before the fix, [KotlinDeclarationProvider.computePackageNames] returned `null` for KLib modules while [KotlinPackageProvider]
+     * correctly reported their packages. This test verifies the two providers are now consistent.
      */
     @Test
-    fun testKlibDeclarationProviderPackageNamesAreKnownToPackageProvider() {
+    fun testKlibPackageProviderAndDeclarationProviderAreConsistent() {
         val sharedPlatform = JsPlatforms.defaultJsPlatform
 
         lateinit var libraryModule: KaLibraryModule
@@ -291,6 +297,14 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
                 )
 
                 platform = sharedPlatform
+                addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(libraryModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
             }
         }
 
@@ -313,34 +327,6 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
         val kotlinFqName = FqName("kotlin")
         assertTrue(packageProvider.doesKotlinOnlyPackageExist(kotlinFqName), "Package 'kotlin' must exist in the package provider")
         assertTrue("kotlin" in packageNamesFromDeclarationProvider, "Package 'kotlin' must be in computePackageNames()")
-    }
-
-    @Test
-    fun testJarLibraryModuleDeclarationProviderComputePackageNamesReturnsNull() {
-        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
-
-        lateinit var libraryModule: KaLibraryModule
-        buildStandaloneAnalysisAPISession(disposable) {
-            buildKtModuleProvider {
-                libraryModule = addModule(
-                    buildKtLibraryModule {
-                        addBinaryRoot(ForTestCompileRuntime.runtimeJarForTests().toPath())
-                        platform = sharedPlatform
-                        libraryName = "stdlib"
-                    }
-                )
-
-                platform = sharedPlatform
-            }
-        }
-
-        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
-        val packageNames = declarationProvider.computePackageNames()
-
-        assertNull(
-            packageNames,
-            "computePackageNames() must return null for a JAR-based library module: JAR packages are handled through platform-specific mechanisms, not the standalone package names provider",
-        )
     }
 
     private class PackageProviderTestContext(

@@ -19,6 +19,9 @@ import java.nio.file.Path
 import kotlin.io.path.extension
 
 /**
+ * A unified source of package names shared between [KotlinStandalonePackageProvider] and
+ * [org.jetbrains.kotlin.analysis.api.standalone.base.declarations.KotlinStandaloneDeclarationProvider].
+ *
  * The provider computes packages from indexed [KtFile]s (sources and binary stubs) and KLib library roots. Sharing this computation
  * ensures both the package provider and the declaration provider report consistent package sets (KT-83760).
  *
@@ -27,21 +30,16 @@ import kotlin.io.path.extension
  * which is important for JAR-based library modules that are handled through separate platform-specific mechanisms.
  */
 class KotlinStandalonePackageNamesProvider(
-    indexedFilesProvider: () -> Collection<KtFile>,
+    indexedFiles: Collection<KtFile>,
     libraryRoots: List<VirtualFile>,
 ) {
-    private val sourceFilesByPackage: Map<FqName, List<VirtualFile>> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        buildMap<FqName, MutableList<VirtualFile>> {
-            for (ktFile in indexedFilesProvider()) {
-                val virtualFile = ktFile.virtualFile ?: continue
-                getOrPut(ktFile.packageFqName) { mutableListOf() }.add(virtualFile)
-            }
-        }
+    private val sourceFilePackages: List<Pair<VirtualFile, FqName>> = indexedFiles.mapNotNull { ktFile ->
+        ktFile.virtualFile?.let { it to ktFile.packageFqName }
     }
 
     /**
-     * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file that contains it.
-     * Only KLib roots are included; JAR roots are omitted
+     * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file that contains it. Only KLib roots are included;
+     * JAR roots are omitted because their packages are handled separately (see [KotlinStandalonePackageNamesProvider]).
      */
     private val klibFiles: Map<VirtualFile, Path> = buildMap {
         for (libraryRoot in libraryRoots) {
@@ -77,14 +75,14 @@ class KotlinStandalonePackageNamesProvider(
         val packages = mutableSetOf<FqName>()
         var foundTrackedEntity = false
 
-        for ((fqName, virtualFiles) in sourceFilesByPackage) {
-            if (virtualFiles.any { scope.contains(it) }) {
+        for ((virtualFile, fqName) in sourceFilePackages) {
+            if (scope.contains(virtualFile)) {
                 foundTrackedEntity = true
                 packages.add(fqName)
             }
         }
 
-        for ((libraryRoot, libraryFile) in klibFiles) {
+        for ([libraryRoot, libraryFile] in klibFiles) {
             if (scope.contains(libraryRoot)) {
                 foundTrackedEntity = true
                 packages.addAll(klibPackages[libraryFile] ?: emptyList())

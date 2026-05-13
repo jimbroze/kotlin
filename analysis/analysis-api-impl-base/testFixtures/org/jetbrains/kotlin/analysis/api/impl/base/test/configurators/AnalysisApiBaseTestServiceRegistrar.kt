@@ -126,19 +126,14 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
         project.apply {
             registerService(KotlinAnnotationsResolverFactory::class.java, KotlinStandaloneAnnotationsResolverFactory(project, testKtFiles))
 
+            val ktFilesForBinaries: List<KtFile>
             val shouldBuildStubsForBinaryLibraries =
                 testServices.libraryIndexingConfiguration.binaryLibraryIndexingMode == AnalysisApiBinaryLibraryIndexingMode.INDEX_STUBS
 
-            lateinit var declarationProviderFactory: KotlinStandaloneDeclarationProviderFactory
-            val packageNamesProvider = KotlinStandalonePackageNamesProvider(
-                indexedFilesProvider = { testKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles() },
-                libraryRoots = sharedBinaryRoots,
-            )
-            declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
+            val declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
                 project,
                 testServices.environmentManager.getApplicationEnvironment(),
                 testKtFiles,
-                packageNamesProvider,
                 binaryRoots = mainBinaryRoots + mainBinaryVirtualFiles,
                 sharedBinaryRoots = sharedBinaryRoots + sharedBinaryVirtualFiles,
                 skipBuiltins = testServices.moduleStructure.allDirectives.contains(NO_RUNTIME),
@@ -147,10 +142,17 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
                 postponeIndexing = true,
             )
 
+            ktFilesForBinaries = declarationProviderFactory.getAdditionalCreatedKtFiles()
             registerService(
                 KotlinDeclarationProviderFactory::class.java, declarationProviderFactory
             )
             registerService(KotlinDeclarationProviderMerger::class.java, KotlinStandaloneDeclarationProviderMerger(project))
+
+            val packageNamesProvider = KotlinStandalonePackageNamesProvider(
+                testKtFiles + ktFilesForBinaries,
+                sharedBinaryRoots,
+            )
+            declarationProviderFactory.setPackageNamesProvider(packageNamesProvider)
 
             registerService(
                 KotlinPackageProviderFactory::class.java,
