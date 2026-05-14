@@ -252,8 +252,12 @@ testing {
             targets.all {
                 if (businessLogicTestSuits.any { testTask.name.startsWith(it) }) {
                     projectTests {
-                        testTask(taskName = testTask.name, jUnitMode = JUnitMode.JUnit5, skipInLocalBuild = false) {
-                            javaLauncher.set(project.getToolchainLauncherFor(JdkMajorVersion.JDK_1_8))
+                        testTask(
+                            taskName = testTask.name,
+                            jUnitMode = JUnitMode.JUnit5,
+                            javaLauncher = JdkMajorVersion.JDK_1_8,
+                            skipInLocalBuild = false
+                        ) {
                             systemProperty("kotlin.build-tools-api.log.level", "DEBUG")
 
                         }
