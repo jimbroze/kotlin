@@ -265,7 +265,7 @@ internal class GradleKotlinCompilerWork @Inject constructor(
             targetPlatform = targetPlatform,
             reportCategories = reportCategories(config.isVerbose),
             reportSeverity = reportSeverity(config.isVerbose),
-            requestedCompilationResults = emptyArray(),
+            requestedCompilationResults = requestedCompilationResults().map { it.code }.toTypedArray(),
             kotlinScriptExtensions = config.kotlinScriptExtensions
         )
         val servicesFacade = GradleCompilerServicesFacadeImpl(log, bufferingMessageCollector)
