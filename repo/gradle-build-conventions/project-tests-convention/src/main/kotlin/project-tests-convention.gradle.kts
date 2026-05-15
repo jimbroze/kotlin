@@ -3,7 +3,6 @@ import org.gradle.internal.os.OperatingSystem
 val extension = extensions.create("projectTests", ProjectTestsExtension::class)
 
 tasks.withType<Test>().configureEach {
-    ignoreFailures = false
     addCommonInputs()
     configureCacheDisabling()
     configureJvmArgumentProviders()

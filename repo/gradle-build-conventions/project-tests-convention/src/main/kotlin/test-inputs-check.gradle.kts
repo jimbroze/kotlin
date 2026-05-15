@@ -12,7 +12,6 @@ dependencies {
 val disableInputsCheck = project.providers.gradleProperty("kotlin.test.instrumentation.disable.inputs.check").orNull?.toBoolean() == true
 tasks.withType<Test>().configureEach {
     val taskName = this.name
-    ignoreFailures = false
     val testInputsCheck = extensions.create<TestInputsCheckExtension>("testInputsCheck")
     val toolchainPath = testInputsCheck.isNative
         .filter { it }

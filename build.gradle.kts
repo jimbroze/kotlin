@@ -598,8 +598,6 @@ val gradlePluginProjects = listOf(
     ":kotlin-dataframe"
 )
 
-val ignoreTestFailures by extra(project.kotlinBuildProperties.ignoreTestFailures)
-
 val dependencyOnSnapshotReflectWhitelist = setOf(
     ":kotlin-compiler",
     ":kotlin-reflect",
