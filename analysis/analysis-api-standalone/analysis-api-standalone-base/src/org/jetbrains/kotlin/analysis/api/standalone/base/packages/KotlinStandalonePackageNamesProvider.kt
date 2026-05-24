@@ -33,9 +33,12 @@ class KotlinStandalonePackageNamesProvider(
     indexedFilesProvider: () -> Collection<KtFile>,
     libraryRoots: List<VirtualFile>,
 ) {
-    private val sourceFilePackages: List<Pair<VirtualFile, FqName>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        indexedFilesProvider().mapNotNull { ktFile ->
-            ktFile.virtualFile?.let { it to ktFile.packageFqName }
+    private val sourceFilesByPackage: Map<FqName, List<VirtualFile>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        buildMap<FqName, MutableList<VirtualFile>> {
+            for (ktFile in indexedFilesProvider()) {
+                val virtualFile = ktFile.virtualFile ?: continue
+                getOrPut(ktFile.packageFqName) { mutableListOf() }.add(virtualFile)
+            }
         }
     }
 
@@ -78,8 +81,8 @@ class KotlinStandalonePackageNamesProvider(
         val packages = mutableSetOf<FqName>()
         var foundTrackedEntity = false
 
-        for ((virtualFile, fqName) in sourceFilePackages) {
-            if (scope.contains(virtualFile)) {
+        for ((fqName, virtualFiles) in sourceFilesByPackage) {
+            if (virtualFiles.any { scope.contains(it) }) {
                 foundTrackedEntity = true
                 packages.add(fqName)
             }
