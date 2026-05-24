@@ -130,12 +130,21 @@ class LanguageVersionSettingsBuilder {
         analysisFlags.forEach { withFlag(it.first, it.second) }
 
         environmentConfigurators.forEach {
-            it.provideAdditionalAnalysisFlags(directives, languageVersion).entries.forEach { (flag, value) ->
+            it.provideAdditionalAnalysisFlags(directives, languageVersion).entries.forEach { [flag, value] ->
                 withFlag(flag, value)
             }
         }
 
         directives[LanguageSettingsDirectives.LANGUAGE].forEach { parseLanguageFeature(it) }
+
+        directives[LanguageSettingsDirectives.LANGUAGE_FEATURE_TOGGLED].forEach {
+            specificFeatures[it] = if (directives.contains(LanguageSettingsDirectives.TESTED_LANGUAGE_FEATURE_DISABLED)) {
+                LanguageFeature.State.DISABLED
+            } else {
+                LanguageFeature.State.ENABLED
+            }
+        }
+
         if (LanguageSettingsDirectives.PROGRESSIVE_MODE in directives) {
             for (feature in LanguageFeature.entries.filter { it.actuallyEnabledInProgressiveMode }) {
                 if (feature.sinceVersion!! <= languageVersion) continue
@@ -147,7 +156,7 @@ class LanguageVersionSettingsBuilder {
     }
 
     private fun parseLanguageFeature(featureString: String) {
-        val (feature, mode) = featureString.parseLanguageFeature()
+        val [feature, mode] = featureString.parseLanguageFeature()
         specificFeatures[feature] = mode
     }
 

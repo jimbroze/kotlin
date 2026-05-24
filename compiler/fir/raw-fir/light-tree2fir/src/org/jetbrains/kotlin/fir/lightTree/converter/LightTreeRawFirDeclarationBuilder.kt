@@ -983,9 +983,7 @@ class LightTreeRawFirDeclarationBuilder(
         firDeclarations: MutableList<FirDeclaration>,
     ) {
         for (node in modifierLists) {
-            firDeclarations += buildErrorNonLocalDeclarationForDanglingModifierList(node).apply {
-                containingClassAttr = currentDispatchReceiverType()?.lookupTag
-            }
+            firDeclarations += buildErrorNonLocalDeclarationForDanglingModifierList(node)
         }
     }
 
@@ -1011,6 +1009,8 @@ class LightTreeRawFirDeclarationBuilder(
                 contextParameters.addContextParameters(modifiers.contextLists, symbol)
                 modifiers.convertAnnotationsTo(annotations)
             }
+        }.apply {
+            containingClassAttr = currentDispatchReceiverType()?.lookupTag
         }
     }
 
@@ -1275,7 +1275,7 @@ class LightTreeRawFirDeclarationBuilder(
                 modifiers?.convertAnnotationsTo(annotations)
                 typeParameters += constructorTypeParametersFromConstructedClass(classWrapper.classBuilder.typeParameters)
                 valueParameters += firValueParameters.map { it.firValueParameter }
-                val (body, contractDescription) = withForcedLocalContext {
+                val [body, contractDescription] = withForcedLocalContext {
                     convertFunctionBody(block, null, allowLegacyContractDescription = true)
                 }
                 this.body = body?.takeIf { it.statements.isNotEmpty() }

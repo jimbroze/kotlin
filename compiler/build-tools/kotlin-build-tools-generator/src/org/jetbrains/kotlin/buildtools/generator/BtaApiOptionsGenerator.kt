@@ -51,12 +51,17 @@ internal class BtaApiOptionsGenerator(
                         addKdoc("\n\n@since 2.3.20")
                     }
                     generateGetPutFunctions(argumentTypeName, level)
-                    if (level.isLeaf()) {
-                        function("build") {
-                            addKdoc("Constructs a new immutable [$className] instance with the options set in this builder.")
-                            addModifiers(KModifier.ABSTRACT)
-                            returns(ClassName(targetPackage, className))
+                    function("build") {
+                        addKdoc("Constructs a new immutable [$className] instance with the options set in this builder.")
+                        addModifiers(KModifier.ABSTRACT)
+                        if (parentClass != null) {
+                            addModifiers(KModifier.OVERRIDE)
                         }
+                        if (!level.isLeaf()) {
+                            addKdoc("\n\n")
+                            addKdoc(KDOC_SINCE_2_4_20)
+                        }
+                        returns(ClassName(targetPackage, className))
                     }
                     if (parentClass == null) {
                         addApplyArgumentStringsFun()
@@ -162,7 +167,7 @@ internal class BtaApiOptionsGenerator(
             }
         }
 
-        enumsToGenerate.forEach { (type, typeSpecBuilder) ->
+        enumsToGenerate.forEach { [type, typeSpecBuilder] ->
             if (enumsExperimental.getOrDefault(type, false)) {
                 typeSpecBuilder.addAnnotation(ANNOTATION_EXPERIMENTAL)
             }
@@ -343,7 +348,8 @@ private fun TypeSpec.Builder.addApplyArgumentStringsFun() {
             """
         Takes a list of string arguments in the format recognized by the Kotlin CLI compiler and applies the options parsed from them into this instance.
         
-        @throws org.jetbrains.kotlin.buildtools.api.CompilerArgumentsParseException when the `arguments` contain errors and cannot be parsed
+        When compiling with Kotlin compiler 2.4.20 and above, parsing errors are collected on this instance and reported as compilation errors when the compilation is executed.
+        @throws org.jetbrains.kotlin.buildtools.api.CompilerArgumentsParseException when compiling with Kotlin compiler below 2.4.20 and the `arguments` contain errors and cannot be parsed
         """.trimIndent()
         )
         addParameter(

@@ -39,6 +39,7 @@ import org.jetbrains.kotlin.konan.target.Family
 import org.jetbrains.kotlin.library.KotlinLibrary
 import org.jetbrains.kotlin.library.uniqueName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.utils.addToStdlib.ifTrue
 
 internal class NativeCodeGeneratorException(val declarations: List<IrElement>, cause: Throwable?): IllegalStateException(cause) {
     override val message: String
@@ -645,7 +646,7 @@ internal class CodeGeneratorVisitor(
 
         private val fileEntry = fileEntry()
         override fun location(offset: Int) = scope?.let { scope ->
-            val (line, column) = fileEntry.lineAndColumn(offset)
+            val [line, column] = fileEntry.lineAndColumn(offset)
             LocationInfo(scope, line, column)
         }
 
@@ -782,7 +783,7 @@ internal class CodeGeneratorVisitor(
     private fun IrSimpleFunction.location(start: Boolean): LocationInfo? {
         if (!context.shouldContainLocationDebugInfo() || startOffset == UNDEFINED_OFFSET) return null
 
-        val (line, column) = if (start) startLineAndColumn() else endLineAndColumn()
+        val [line, column] = if (start) startLineAndColumn() else endLineAndColumn()
         return LocationInfo(scope = scope()!!, line = line, column = column)
     }
 
@@ -1945,7 +1946,7 @@ internal class CodeGeneratorVisitor(
         override fun location(offset: Int): LocationInfo? {
             val diScope = inlineFunctionScope ?: return null
             val inlinedAt = outerContext.location(inlinedBlock.startOffset) ?: return null
-            val (line, column) = fileEntry.lineAndColumn(offset)
+            val [line, column] = fileEntry.lineAndColumn(offset)
             return LocationInfo(diScope, line, column, inlinedAt)
         }
 
@@ -2021,7 +2022,7 @@ internal class CodeGeneratorVisitor(
         override fun fileScope(): CodeContext? = this
 
         override fun location(offset: Int) = scope()?.let {
-            val (line, column) = fileEntry.lineAndColumn(offset)
+            val [line, column] = fileEntry.lineAndColumn(offset)
             LocationInfo(it, line, column)
         }
 
@@ -2249,7 +2250,7 @@ internal class CodeGeneratorVisitor(
      * exactly correspond to a tail of LLVM parameters.
      */
     private fun evaluateExplicitArgs(expression: IrFunctionAccessExpression): List<LLVMValueRef> {
-        val result = expression.getArgumentsWithIr().map { (_, argExpr) ->
+        val result = expression.getArgumentsWithIr().map { [_, argExpr] ->
             evaluateExpression(argExpr)
         }
         val explicitParametersCount = expression.symbol.owner.parameters.size
@@ -2548,13 +2549,17 @@ internal class CodeGeneratorVisitor(
     private val IrSimpleFunction.needsNativeThreadState: Boolean
         get() {
             // We assume that call site thread state switching is required for interop calls only.
-            val result = origin == CBridgeOrigin.KOTLIN_TO_C_BRIDGE
-            if (result) {
+            if (origin == CBridgeOrigin.KOTLIN_TO_C_BRIDGE) {
                 check(isExternal)
                 check(!annotations.hasAnnotation(KonanFqNames.gcUnsafeCall))
                 check(annotations.hasAnnotation(RuntimeNames.filterExceptions))
+                return true
             }
-            return result
+            if (annotations.hasAnnotation(RuntimeNames.importedBridge)) {
+                check(isExternal)
+                return true
+            }
+            return false
         }
 
     private fun call(function: IrSimpleFunction, llvmCallable: LlvmCallable, args: List<LLVMValueRef>,
@@ -2582,6 +2587,8 @@ internal class CodeGeneratorVisitor(
         } else {
             needsNativeThreadState = function.needsNativeThreadState
             filterExceptionWith = foreignExceptionModeFromAnnotation
+                    ?: (needsNativeThreadState && function.annotations.hasAnnotation(RuntimeNames.importedBridge))
+                            .ifTrue { ForeignExceptionMode.Mode.TERMINATE }
         }
 
         val exceptionHandler = if (filterExceptionWith != null) {

@@ -31,7 +31,7 @@ import org.jetbrains.kotlin.fir.references.toResolvedConstructorSymbol
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.symbols.impl.FirConstructorSymbol
 import org.jetbrains.kotlin.fir.types.*
-import org.jetbrains.kotlin.fir.unwrapOr
+import org.jetbrains.kotlin.fir.resultOrNull
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
@@ -114,7 +114,7 @@ internal class ClassMemberGenerator(
                 }
                 val irParameters = parameters.filter { it.kind == IrParameterKind.Regular }
                 val annotationMode = containingClass?.classKind == ClassKind.ANNOTATION_CLASS && irFunction is IrConstructor
-                for ((valueParameter, firValueParameter) in irParameters.zip(firFunction.valueParameters)) {
+                for ([valueParameter, firValueParameter] in irParameters.zip(firFunction.valueParameters)) {
                     visitor.withAnnotationMode(enableAnnotationMode = annotationMode) {
                         valueParameter.setDefaultValue(firValueParameter)
                     }
@@ -383,7 +383,7 @@ internal class ClassMemberGenerator(
         }
 
         if (constructor.typeParameters.isNotEmpty() && typeArguments.isNotEmpty()) {
-            for ((index, typeArgument) in typeArguments.withIndex()) {
+            for ([index, typeArgument] in typeArguments.withIndex()) {
                 if (index >= constructor.typeParameters.size) break
                 call.typeArguments[index] = (typeArgument as ConeKotlinTypeProjection).type.toIrType()
             }
@@ -405,7 +405,7 @@ internal class ClassMemberGenerator(
             return // TODO: Remove when KT-67381 is implemented
         }
 
-        val firDefaultValue = firValueParameter.evaluatedInitializer?.unwrapOr<FirExpression> {} ?: firValueParameter.defaultValue
+        val firDefaultValue = firValueParameter.evaluatedInitializer?.resultOrNull<FirExpression>() ?: firValueParameter.defaultValue
         if (firDefaultValue != null) {
             this.defaultValue = when {
                 configuration.skipBodies && parent.isDataClassCopy ->

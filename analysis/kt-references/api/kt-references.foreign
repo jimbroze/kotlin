@@ -1,4 +1,3 @@
-com/intellij/openapi/Disposable
 com/intellij/openapi/extensions/ExtensionPointName
 com/intellij/openapi/project/Project
 com/intellij/openapi/util/TextRange
@@ -30,5 +29,4 @@ org/jetbrains/kotlin/psi/KtPsiFactory
 org/jetbrains/kotlin/psi/KtReferenceExpression
 org/jetbrains/kotlin/psi/KtSimpleNameExpression
 org/jetbrains/kotlin/psi/KtValueArgument
-org/jetbrains/kotlin/resolution/KtResolvable
 org/jetbrains/kotlin/resolve/references/ReferenceAccess

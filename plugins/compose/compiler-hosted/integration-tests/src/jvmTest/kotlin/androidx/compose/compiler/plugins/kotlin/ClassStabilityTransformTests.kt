@@ -1088,20 +1088,114 @@ class ClassStabilityTransformTests : AbstractIrTransformTest() {
     )
 
     @Test
-    fun testChildOfUnstableClass() = assertStability(
-        "",
+    fun testStableClassBecomesUncertainWhenOpened() = assertStability(
+        """
+            open class C {
+                val x: Int = 0
+            }
+        """,
+        "Uncertain(C)"
+    )
+
+    @Test
+    fun testUnstableClassStaysUnstableWhenOpened() = assertStability(
+        """
+            open class C {
+                var x: Int = 0
+            }
+        """,
+        "Unstable"
+    )
+
+    @Test
+    fun testParameterStableClassWhenOpened() = assertStability(
+        """
+            open class C<T>(val x: T)
+        """,
+        "Uncertain(C),Parameter(T)"
+    )
+
+    @Test
+    fun testRuntimeStableClassWhenOpened() = assertStability(
+        """
+            class B
+        """.trimIndent(),
+        """
+            open class C(val b: B)
+        """,
+        "Uncertain(C),Runtime(B)"
+    )
+
+    @Test
+    fun testStableChildOfUncertainClass() = assertStability(
         """
             open class Parent {
-                var age: Int = 0
-                var name: String = ""
-
-                fun info() = name + "|" + age.toString()
+                val x: Int = 0
             }
 
             class Child : Parent()
         """,
-        "Child()",
+        "Stable"
+    )
+
+    @Test
+    fun testUnstableChildOfUncertainClass() = assertStability(
+        """
+            open class Parent {
+                val x: Int = 0
+            }
+
+            class Child(var y: Int) : Parent()
+        """,
         "Unstable"
+    )
+
+    @Test
+    fun testStableChildOfUnstableClass() = assertStability(
+        """
+            open class Parent {
+                var x: Int = 0
+            }
+
+            class Child : Parent()
+        """,
+        "Unstable"
+    )
+
+    @Test
+    fun testStableChildOfParameterStableClass() = assertStability(
+        "",
+        """
+            open class Parent<T>(val x: T)
+
+            class Child : Parent<Int>(50)
+        """,
+        "Uncertain(Parent),Parameter(T)"
+    )
+
+    @Test
+    fun testStableChildOfRuntimeStableClass() = assertStability(
+        """
+            class B
+        """.trimIndent(),
+        """
+            open class Parent(val b: B)
+
+            class Child : Parent(B())
+        """,
+        "Uncertain(Parent),Runtime(B)"
+    )
+
+    @Test
+    fun testStableChildOfRuntimeStableClassTransform() = assertTransform(
+        unchecked = """
+            class B
+        """.trimIndent(),
+        checked = """
+            open class Parent(val b: B)
+
+            class Child : Parent(B())
+        """,
     )
 
     @Test
@@ -1889,7 +1983,7 @@ class ClassStabilityTransformTests : AbstractIrTransformTest() {
         val stabilityInferencer = StabilityInferencer(isTargetJvm = true, irModule.descriptor, setOf())
 
         val testIrFile = irModule.files.last()
-        val (aClass, bClass, cClass, dClass) = testIrFile.declarations.filterIsInstance<IrClass>()
+        val [aClass, bClass, cClass, dClass] = testIrFile.declarations.filterIsInstance<IrClass>()
 
         // When a dependent in a different file requests the stability of a class defined in
         // `testIrFile`, we expect the computed stability not to be cached. Note that

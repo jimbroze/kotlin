@@ -315,6 +315,10 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
         str = replaceIfNeeded(str, "$JDK_17$", () -> KtTestUtil.getJdk17Home().getPath());
         str = replaceIfNeeded(str, "$STDLIB_JS$", () -> ForTestCompileRuntime.stdlibJsForTests().getAbsolutePath());
         str = replaceIfNeeded(str, "$STDLIB_WASM_JS$", () -> ForTestCompileRuntime.stdlibWasmJsForTests().getAbsolutePath());
+        str = replaceIfNeeded(str, "$LOMBOK-COMPILER-PLUGIN-JAR$", () -> ForTestCompileRuntime.lombokCompilerPluginForTests().getAbsolutePath());
+        str = replaceIfNeeded(str, "$ALLOPEN-COMPILER-PLUGIN-JAR$", () -> ForTestCompileRuntime.allOpenCompilerPluginForTests().getAbsolutePath());
+        str = replaceIfNeeded(str, "$NOARG-COMPILER-PLUGIN-JAR$", () -> ForTestCompileRuntime.noArgCompilerPluginForTests().getAbsolutePath());
+        str = replaceIfNeeded(str, "$KOTLIN-REFLECT-JAR$", () -> ForTestCompileRuntime.reflectJarForTests().getAbsolutePath());
 
         return str;
     }

@@ -611,7 +611,7 @@ class ComposableFunctionBodyTransformer(
             ?: error("Expected a FunctionScope but none exist. \n${printScopeStack()}")
 
     override fun visitClass(declaration: IrClass): IrStatement {
-        if (declaration.isComposableSingletonClass()) {
+        if (declaration.isComposableSingletonClass) {
             return declaration
         }
         return inScope(Scope.ClassScope(declaration.name)) {
@@ -673,7 +673,6 @@ class ComposableFunctionBodyTransformer(
                     val default = it.defaultValue?.expression
                     scope.metrics.recordParameter(
                         declaration = it,
-                        type = it.type,
                         stability = stability,
                         default = default,
                         defaultStatic = default?.isStatic(fileContainingDependent = fileContainingDeclaration) == true,
@@ -707,39 +706,6 @@ class ComposableFunctionBodyTransformer(
                 changedParam,
                 defaultParam
             )
-        }.also { function ->
-            val assignableParams = function.parameters.filter { it.isAssignable }.toSet()
-            val defaultArgs = assignableParams // only default args and composer are marked as `isAssignable`
-
-            if (assignableParams.isNotEmpty()) {
-                function.transform(
-                    object : IrElementTransformerVoid() {
-                        override fun visitGetValue(expression: IrGetValue): IrExpression {
-                            if (expression.symbol.owner !in defaultArgs) {
-                                return super.visitGetValue(expression)
-                            }
-                            val defaultParameterType = expression.type.defaultParameterType()
-                            if (defaultParameterType != expression.type) {
-                                return IrTypeOperatorCallImpl(
-                                    expression.startOffset,
-                                    expression.endOffset,
-                                    expression.type,
-                                    IrTypeOperator.IMPLICIT_CAST,
-                                    expression.type,
-                                    IrGetValueImpl(
-                                        expression.startOffset,
-                                        expression.endOffset,
-                                        defaultParameterType,
-                                        expression.symbol,
-                                        expression.origin
-                                    )
-                                )
-                            }
-                            return super.visitGetValue(expression)
-                        }
-                    }, null
-                )
-            }
         }
     }
 
@@ -784,7 +750,7 @@ class ComposableFunctionBodyTransformer(
 
         val defaultScope = transformDefaults(scope)
 
-        var (transformed, returnVar) = body.asBodyAndResultVar()
+        var [transformed, returnVar] = body.asBodyAndResultVar()
 
         val emitTraceMarkers = traceEventMarkersEnabled &&
                 !scope.function.isInline &&
@@ -955,7 +921,7 @@ class ComposableFunctionBodyTransformer(
 
         scope.dirty = dirty
 
-        val (nonReturningBody, returnVar) = body.asBodyAndResultVar(declaration)
+        val [nonReturningBody, returnVar] = body.asBodyAndResultVar(declaration)
 
         val emitTraceMarkers = traceEventMarkersEnabled && !scope.isInlinedLambda
 
@@ -1115,7 +1081,7 @@ class ComposableFunctionBodyTransformer(
 
         scope.dirty = dirty
 
-        val (nonReturningBody, returnVar) = body.asBodyAndResultVar()
+        val [nonReturningBody, returnVar] = body.asBodyAndResultVar()
 
         val end = {
             irEndRestartGroupAndUpdateScope(
@@ -1308,7 +1274,7 @@ class ComposableFunctionBodyTransformer(
         }
 
         val originalBody = declaration.body ?: return super.visitFunction(declaration)
-        val (body, returnVar) = originalBody.asBodyAndResultVar()
+        val [body, returnVar] = originalBody.asBodyAndResultVar()
         body.transformChildrenVoid()
 
         // Avoid transforming functions that are not referencing anything composable, as they cannot use slots (read-only is fine).
@@ -1487,7 +1453,6 @@ class ComposableFunctionBodyTransformer(
 
             scope.metrics.recordParameter(
                 declaration = param,
-                type = param.type,
                 stability = stability,
                 default = defaultExpr[slotIndex],
                 defaultStatic = defaultExprIsStatic[slotIndex],
@@ -3035,7 +3000,7 @@ class ComposableFunctionBodyTransformer(
             property?.transformChildrenVoid()
         }
 
-        if (expression is IrCall && (expression.isComposableCall() || expression.isSyntheticComposableCall())) {
+        if (expression is IrCall && expression.isComposableCall()) {
             return visitComposableCall(expression)
         }
 
@@ -3413,7 +3378,7 @@ class ComposableFunctionBodyTransformer(
                 stabilityInferencer.stabilityOf(expr.type, fileContainingDependent = fileContainingRememberCall).knownStable() &&
                 inputArgMetas.all { it.isStatic }
             ) {
-                context.irTrace.record(ComposeWritableSlices.IS_STATIC_EXPRESSION, expr, true)
+                expr.isStaticExpression = true
             }
         }
     }
@@ -3586,7 +3551,7 @@ class ComposableFunctionBodyTransformer(
         if (blockArg !is IrFunctionExpression)
             error("Expected function expression but was ${blockArg?.let { it::class }}")
 
-        val (block, resultVar) = blockArg.function.body!!.asBodyAndResultVar(expectedTarget = blockArg.function)
+        val [block, resultVar] = blockArg.function.body!!.asBodyAndResultVar(expectedTarget = blockArg.function)
 
         var transformed: IrExpression = block
 
@@ -3948,7 +3913,7 @@ class ComposableFunctionBodyTransformer(
             expression.branches.fastForEachIndexed { index, it ->
                 if (it is IrElseBranch) {
                     hasElseBranch = true
-                    val (resultScope, result) = it.result.transformWithScope(Scope.BranchScope())
+                    val [resultScope, result] = it.result.transformWithScope(Scope.BranchScope())
 
                     condScopes.add(Scope.BranchScope())
                     resultScopes.add(resultScope)
@@ -3965,10 +3930,10 @@ class ComposableFunctionBodyTransformer(
                         )
                     )
                 } else {
-                    val (condScope, condition) = it
+                    val [condScope, condition] = it
                         .condition
                         .transformWithScope(Scope.BranchScope())
-                    val (resultScope, result) = it
+                    val [resultScope, result] = it
                         .result
                         .transformWithScope(Scope.BranchScope())
 
@@ -4123,7 +4088,7 @@ class ComposableFunctionBodyTransformer(
             val inComposableCall: Boolean
                 get() = (parent as? CallScope)?.expression?.let { call ->
                     with(transformer) {
-                        call is IrCall && (call.isComposableCall() || call.isSyntheticComposableCall())
+                        call is IrCall && call.isComposableCall()
                     }
                 } == true
 
@@ -5046,7 +5011,7 @@ private fun IrFunction.parameterInformation(): String {
     parameters
         .mapIndexed { index, parameter -> Pair(index, parameter) }
         .sortedBy { it.second.name }
-        .forEachIndexed { sortedIndex, (originalIndex, _) ->
+        .forEachIndexed { sortedIndex, [originalIndex, _] ->
             sortIndex[originalIndex] = sortedIndex
         }
 

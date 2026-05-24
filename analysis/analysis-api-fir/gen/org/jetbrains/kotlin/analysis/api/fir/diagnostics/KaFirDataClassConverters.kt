@@ -930,14 +930,6 @@ private fun KaDiagnosticConverterBuilder.addConversions16() {
             token,
         )
     }
-    add(FirErrors.DEPRECATION_OF_OUTER_CLASS) { firDiagnostic ->
-        DeprecationOfOuterClassImpl(
-            firSymbolBuilder.buildSymbol(firDiagnostic.a),
-            firDiagnostic.b,
-            firDiagnostic as KtPsiDiagnostic,
-            token,
-        )
-    }
     add(FirErrors.HAS_NEXT_FUNCTION_AMBIGUITY) { firDiagnostic ->
         HasNextFunctionAmbiguityImpl(
             firDiagnostic.a.map { firBasedSymbol ->
@@ -2686,9 +2678,9 @@ private fun KaDiagnosticConverterBuilder.addConversions59() {
     add(FirErrors.ACTUAL_WITHOUT_EXPECT) { firDiagnostic ->
         ActualWithoutExpectImpl(
             firSymbolBuilder.buildSymbol(firDiagnostic.a),
-            firDiagnostic.b.mapKeys { (expectActualMatchingCompatibility, _) ->
+            firDiagnostic.b.mapKeys { [expectActualMatchingCompatibility, _] ->
                 expectActualMatchingCompatibility
-            }.mapValues { (_, collection) -> 
+            }.mapValues { [_, collection] -> 
                 collection.map { firBasedSymbol ->
                                     firSymbolBuilder.buildSymbol(firBasedSymbol)
                                 }
@@ -6794,6 +6786,15 @@ private fun KaDiagnosticConverterBuilder.addConversions151() {
             token,
         )
     }
+    add(FirErrors.DEPRECATION_ERROR_MIGRATION_PERIOD_WARNING) { firDiagnostic ->
+        DeprecationErrorMigrationPeriodWarningImpl(
+            firSymbolBuilder.buildSymbol(firDiagnostic.a),
+            firDiagnostic.b,
+            firDiagnostic.c,
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
     add(FirErrors.LOCAL_EXTENSION_PROPERTY) { firDiagnostic ->
         LocalExtensionPropertyImpl(
             firDiagnostic as KtPsiDiagnostic,
@@ -8270,9 +8271,9 @@ private fun KaDiagnosticConverterBuilder.addConversions190() {
         NoActualClassMemberForExpectedClassImpl(
             firSymbolBuilder.buildSymbol(firDiagnostic.a),
             firDiagnostic.b.map { pair ->
-                firSymbolBuilder.buildSymbol(pair.first) to pair.second.mapKeys { (mismatch, _) ->
+                firSymbolBuilder.buildSymbol(pair.first) to pair.second.mapKeys { [mismatch, _] ->
                                     mismatch
-                                }.mapValues { (_, collection) -> 
+                                }.mapValues { [_, collection] -> 
                                     collection.map { firBasedSymbol ->
                                                             firSymbolBuilder.buildSymbol(firBasedSymbol)
                                                         }

@@ -41,10 +41,9 @@ open class CodeOwnersArgumentProviders @Inject constructor(
 }
 
 projectTests {
-    testTask(jUnitMode = JUnitMode.JUnit4) {
+    testTask(jUnitMode = JUnitMode.JUnit4, javaLauncher = JdkMajorVersion.JDK_17_0) {
         dependsOn(":dist")
         workingDir = rootDir
-        javaLauncher.set(getToolchainLauncherFor(JdkMajorVersion.JDK_17_0))
         jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
 
         jvmArgumentProviders.add(objects.newInstance<CodeOwnersArgumentProviders>().apply {

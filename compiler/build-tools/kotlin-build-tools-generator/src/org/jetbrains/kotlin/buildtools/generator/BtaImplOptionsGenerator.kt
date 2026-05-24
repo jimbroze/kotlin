@@ -110,7 +110,6 @@ internal class BtaImplOptionsGenerator(
                         applyCompilerArgumentsFun = applyCompilerArgumentsFun,
                         toCompilerConverterFun = toCompilerConverterFun,
                         toCompilerArgumentsAffectingOutcomeFun = toCompilerArgumentsAffectingOutcomeFun,
-                        defaultsInitializer = defaultsInitializer,
                     )
                 }.build())
 
@@ -225,7 +224,6 @@ internal class BtaImplOptionsGenerator(
         applyCompilerArgumentsFun: FunSpec.Builder,
         toCompilerConverterFun: FunSpec.Builder,
         toCompilerArgumentsAffectingOutcomeFun: FunSpec.Builder,
-        defaultsInitializer: CodeBlock.Builder,
     ) {
         arguments.forEach { argument ->
             val name = argument.extractName()
@@ -339,9 +337,18 @@ internal class BtaImplOptionsGenerator(
             }
         }
 
-        applyCompilerArgumentsFun.addSafeMethodAccessStatement(CodeBlock.builder().apply {
-            add("this[%M] = %M(if(%M in this) this[%M] else %L, arguments)", member, applier, member, member, argument.defaultValue)
-        }.build(), failOnNoSuchMethod = false)
+        applyCompilerArgumentsFun.addSafeMethodAccessStatement(
+            CodeBlock.builder().apply {
+                add("this[%M] = %M(if(%M in this) this[%M] else %L, arguments)", member, applier, member, member, argument.defaultValue)
+            }.build(),
+            catches =
+                buildList {
+                    if (!generateCompatLayer) {
+                        add(catchCompilerArgumentsParseException())
+                    }
+                    add(catchNoSuchMethodError())
+                },
+        )
     }
 
     /**
@@ -394,7 +401,15 @@ internal class BtaImplOptionsGenerator(
         val compilerToBtaStatement = buildCompilerToBtaValueTransform(
             member, type, argument, effectiveCompilerName, wasRemoved, argumentTypeParameter
         )
-        applyCompilerArgumentsFun.addSafeMethodAccessStatement(compilerToBtaStatement, failOnNoSuchMethod = false)
+        applyCompilerArgumentsFun.addSafeMethodAccessStatement(
+            compilerToBtaStatement,
+            catches = buildList {
+                if (!generateCompatLayer && type.isGeneratedEnum) {
+                    add(catchCompilerArgumentsParseException())
+                }
+                add(catchNoSuchMethodError())
+            },
+        )
     }
 
     /**
@@ -504,11 +519,21 @@ internal class BtaImplOptionsGenerator(
         when {
             type.isGeneratedEnum -> {
                 add(maybeGetNullabilitySign(argument))
-                add(
-                    $$".let { %T.entries.firstOrNull { entry -> entry.stringValue == it } ?: throw %M(\"Unknown -$${argument.name} value: $it\") }",
-                    argumentTypeParameter.copy(nullable = false),
-                    MemberName("org.jetbrains.kotlin.buildtools.api", "CompilerArgumentsParseException"),
-                )
+                if (!generateCompatLayer) {
+                    add(
+                        $$".let { %T.entries.firstOrNull { entry -> entry.stringValue.equals(it, true) }?.also { entry -> %M(_restrictedArgViolations, arguments::%N, entry.stringValue, it) } ?: throw %M(\"Unknown -$${argument.name} value: $it\") }",
+                        argumentTypeParameter.copy(nullable = false),
+                        MemberName(targetPackage, "checkCaseMatches"),
+                        effectiveCompilerName,
+                        MemberName("org.jetbrains.kotlin.buildtools.api", "CompilerArgumentsParseException"),
+                    )
+                } else {
+                    add(
+                        $$".let { %T.entries.firstOrNull { entry -> entry.stringValue.equals(it, true) } ?: throw %M(\"Unknown -$${argument.name} value: $it\") }",
+                        argumentTypeParameter.copy(nullable = false),
+                        MemberName("org.jetbrains.kotlin.buildtools.api", "CompilerArgumentsParseException"),
+                    )
+                }
             }
             argument.valueType.origin is IntType -> {
                 add(maybeGetNullabilitySign(argument))
@@ -561,7 +586,7 @@ internal class BtaImplOptionsGenerator(
                 """.trimIndent()
             )
             returns(listTypeNameOf<String>())
-            addStatement("return toCompilerArgumentsAffectingOutcome().compilerToArgumentStrings().sorted()")
+            addStatement("return toCompilerArgumentsAffectingOutcome().compilerToArgumentStrings(allowArgFileInValues = false).sorted()")
         }
     }
 
@@ -772,7 +797,7 @@ internal class BtaImplOptionsGenerator(
                 append(" This warning will become an error starting from Kotlin ${info.errorSince.releaseName}.")
             }
         }
-        val (violationType, message) = when {
+        val [violationType, message] = when {
             info.errorSince != null && kotlinVersion >= info.errorSince -> "Error" to baseMessage
             kotlinVersion >= info.warningSince -> "Warning" to warningMessage
             else -> return
@@ -795,6 +820,25 @@ internal class BtaImplOptionsGenerator(
             maybeGetNullabilitySign(argument) + ".also { list -> list.%M(\"${argument.delimiter}\") }",
             MemberName(targetPackage, "checkNoneContains", isExtension = true)
         )
+    }
+
+    private fun TypeSpec.Builder.maybeAddToArgumentsStringFun(level: KotlinCompilerArgumentsLevel, parentClass: TypeName?) {
+        if (!level.isLeaf()) {
+            return
+        }
+        function("toArgumentStrings") {
+            addModifiers(KModifier.OVERRIDE)
+            if (parentClass == null) {
+                addModifiers(KModifier.OPEN)
+            }
+            returns(listTypeNameOf<String>())
+            if (generateCompatLayer) {
+                addStatement("val arguments = toCompilerArguments().compilerToArgumentStrings()")
+            } else {
+                addStatement("val arguments = toCompilerArguments().compilerToArgumentStrings(allowArgFileInValues = false)")
+            }
+            addStatement("return arguments")
+        }
     }
 }
 
@@ -822,28 +866,16 @@ internal fun FunSpec.Builder.addSafeSetStatement(
                 }
             }
         )
-        addSafeMethodAccessStatement(setStatement, failOnNoSuchMethod = true, errorMessage = errorMessage)
+        addSafeMethodAccessStatement(
+            setStatement,
+            catches = listOf(catchNoSuchMethodError(errorMessage)),
+        )
     } else {
         addStatement("%L", setStatement)
     }
 }
 
 private fun maybeGetNullabilitySign(argument: BtaCompilerArgument<*>): String = (if (argument.valueType.isNullable) "?" else "")
-
-private fun TypeSpec.Builder.maybeAddToArgumentsStringFun(level: KotlinCompilerArgumentsLevel, parentClass: TypeName?) {
-    if (!level.isLeaf()) {
-        return
-    }
-    function("toArgumentStrings") {
-        addModifiers(KModifier.OVERRIDE)
-        if (parentClass == null) {
-            addModifiers(KModifier.OPEN)
-        }
-        returns(listTypeNameOf<String>())
-        addStatement("val arguments = toCompilerArguments().compilerToArgumentStrings()")
-        addStatement("return arguments")
-    }
-}
 
 private fun toCompilerArgumentsAffectingOutcomeFunBuilder(
     level: KotlinCompilerArgumentsLevel,
@@ -912,41 +944,25 @@ private fun TypeSpec.Builder.maybeAddApplyArgumentStringsFun(
             addModifiers(KModifier.OPEN)
         }
         addParameter("arguments", listTypeNameOf<String>())
-        val bodyCode = CodeBlock.builder().apply {
+        addStatement(
+            "val compilerArgs: %T = %M(arguments)",
+            compilerArgumentsClass,
+            MemberName("org.jetbrains.kotlin.cli.common.arguments", "parseCommandLineArguments")
+        )
+        if (!generateCompatLayer) {
+            addStatement("collectRestrictedArgViolations(compilerArgs, %T())", compilerArgumentsClass)
             addStatement(
-                "val compilerArgs: %T = %M(arguments)",
-                compilerArgumentsClass,
-                MemberName("org.jetbrains.kotlin.cli.common.arguments", "parseCommandLineArguments")
+                "%M(compilerArgs.errors).forEach { _argumentValidationErrors.add(it) }",
+                MemberName("org.jetbrains.kotlin.cli.common.arguments", "validateArgumentsAllErrors"),
             )
-            if (!generateCompatLayer) {
-                addStatement("collectRestrictedArgViolations(compilerArgs, %T())", compilerArgumentsClass)
-            }
+        } else {
             addStatement(
                 "%M(compilerArgs.errors)?.let { throw %M(it) }",
                 MemberName("org.jetbrains.kotlin.cli.common.arguments", "validateArguments"),
                 MemberName("org.jetbrains.kotlin.buildtools.api", "CompilerArgumentsParseException"),
             )
-            addStatement("applyCompilerArguments(compilerArgs)")
-        }.build()
-        if (!generateCompatLayer) {
-            addCode(
-                CodeBlock.builder()
-                    .beginControlFlow("try")
-                    .add(bodyCode)
-                    .nextControlFlow(
-                        "catch (e: %T)",
-                        ClassName("org.jetbrains.kotlin.buildtools.api", "CompilerArgumentsParseException")
-                    )
-                    .addStatement(
-                        "_argumentValidationErrors.add(e.message ?: %S)",
-                        "Error parsing compiler arguments"
-                    )
-                    .endControlFlow()
-                    .build()
-            )
-        } else {
-            addCode(bodyCode)
         }
+        addStatement("applyCompilerArguments(compilerArgs)")
     }
 }
 
@@ -962,6 +978,7 @@ private fun applyCompilerArgumentsFunBuilder(
     annotation<Suppress> {
         addMember("%S", "DEPRECATION")
     }
+    addModifiers(KModifier.PROTECTED)
 }
 
 private fun KotlinCompilerArgumentsLevel.getCompilerArgumentsClassName(): ClassName {
@@ -972,19 +989,24 @@ private fun KotlinCompilerArgumentsLevel.getCompilerArgumentsClassName(): ClassN
 
 private fun FunSpec.Builder.addSafeMethodAccessStatement(
     codeBlock: CodeBlock,
-    failOnNoSuchMethod: Boolean = true,
-    errorMessage: CodeBlock? = null,
+    catches: List<CodeBlock>,
 ): FunSpec.Builder {
-    return if (failOnNoSuchMethod) {
-        addStatement(
-            "try { %L } catch (e: NoSuchMethodError) { throw IllegalStateException(%L).initCause(e) }",
-            codeBlock,
-            errorMessage ?: CodeBlock.of("%S", "Unknown parameter")
-        )
-    } else {
-        addStatement(
-            "try { %L } catch (_: NoSuchMethodError) {  }",
-            codeBlock
-        )
+    val format = buildString {
+        append("try { %L }")
+        repeat(catches.size) { append(" %L") }
     }
+    return addStatement(format, codeBlock, *catches.toTypedArray())
 }
+
+private fun catchCompilerArgumentsParseException(): CodeBlock = CodeBlock.of(
+    "catch (ex: %M) { _argumentValidationErrors.add(ex.message ?: %S) }",
+    MemberName("org.jetbrains.kotlin.buildtools.api", "CompilerArgumentsParseException"),
+    "Error parsing compiler arguments",
+)
+
+private fun catchNoSuchMethodError(errorMessage: CodeBlock? = null): CodeBlock =
+    if (errorMessage == null) {
+        CodeBlock.of("catch (_: NoSuchMethodError) {  }")
+    } else {
+        CodeBlock.of("catch (e: NoSuchMethodError) { throw IllegalStateException(%L).initCause(e) }", errorMessage)
+    }

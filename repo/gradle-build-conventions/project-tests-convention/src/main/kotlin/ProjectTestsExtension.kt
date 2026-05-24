@@ -117,6 +117,22 @@ abstract class ProjectTestsExtension(val project: Project) {
         project.tasks.withType(Test::class.java).configureEach { withPluginSandboxJar() }
     }
 
+    fun withLombokCompilerPluginJar() {
+        project.tasks.withType(Test::class.java).configureEach { withLombokCompilerPluginJar() }
+    }
+
+    fun withAllOpenCompilerPluginJar() {
+        project.tasks.withType(Test::class.java).configureEach { withAllOpenCompilerPluginJar() }
+    }
+
+    fun withNoArgCompilerPluginJar() {
+        project.tasks.withType(Test::class.java).configureEach { withNoArgCompilerPluginJar() }
+    }
+
+    fun withMainKtsJar() {
+        project.tasks.withType(Test::class.java).configureEach { withMainKtsJar() }
+    }
+
     // -------------------- testData configuration --------------------
 
     internal abstract val testDataFiles: ListProperty<Directory>
@@ -134,6 +150,7 @@ abstract class ProjectTestsExtension(val project: Project) {
     fun testTask(
         parallel: Boolean? = null,
         jUnitMode: JUnitMode,
+        javaLauncher: JdkMajorVersion = DEFAULT_JAVA_LAUNCHER_FOR_TESTS,
         maxHeapSizeMb: Int? = null,
         minHeapSizeMb: Int? = null,
         maxMetaspaceSizeMb: Int = 512,
@@ -147,6 +164,7 @@ abstract class ProjectTestsExtension(val project: Project) {
             taskName = "test",
             parallel,
             jUnitMode,
+            javaLauncher,
             maxHeapSizeMb,
             minHeapSizeMb,
             maxMetaspaceSizeMb,
@@ -162,6 +180,7 @@ abstract class ProjectTestsExtension(val project: Project) {
         taskName: String,
         parallel: Boolean? = null,
         jUnitMode: JUnitMode,
+        javaLauncher: JdkMajorVersion = DEFAULT_JAVA_LAUNCHER_FOR_TESTS,
         maxHeapSizeMb: Int? = null,
         minHeapSizeMb: Int? = null,
         maxMetaspaceSizeMb: Int = 512,
@@ -194,6 +213,7 @@ abstract class ProjectTestsExtension(val project: Project) {
             taskName,
             parallel ?: false,
             jUnitMode,
+            javaLauncher,
             maxHeapSizeMb,
             minHeapSizeMb,
             maxMetaspaceSizeMb,

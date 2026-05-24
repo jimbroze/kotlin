@@ -8,10 +8,6 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import org.jetbrains.kotlin.testFederation.TestFederationInferAffectedDomainsTask
 
 buildscript {
-    dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-build-gradle-plugin:${kotlinBuildProperties.buildGradlePluginVersion.get()}")
-    }
-
     /**
      * Global Security Fixes for Common Dependencies
      *
@@ -598,8 +594,6 @@ val gradlePluginProjects = listOf(
     ":kotlin-dataframe"
 )
 
-val ignoreTestFailures by extra(project.kotlinBuildProperties.ignoreTestFailures)
-
 val dependencyOnSnapshotReflectWhitelist = setOf(
     ":kotlin-compiler",
     ":kotlin-reflect",
@@ -689,14 +683,20 @@ allprojects {
 
         mirrorRepo?.let(::maven)
 
-        maven(intellijRepo) {
-            content {
+        exclusiveContent {
+            forRepository {
+                maven(intellijRepo)
+            }
+            filter {
                 includeGroupByRegex("com\\.jetbrains\\.intellij(\\..+)?")
             }
         }
 
-        maven("https://packages.jetbrains.team/maven/p/ij/intellij-dependencies") {
-            content {
+        exclusiveContent {
+            forRepository {
+                maven("https://packages.jetbrains.team/maven/p/ij/intellij-dependencies")
+            }
+            filter {
                 includeGroupByRegex("org\\.jetbrains\\.intellij\\.deps(\\..+)?")
                 includeGroupByRegex("com.intellij.platform.*")
                 includeGroupByRegex("org.jetbrains.jps.*")
@@ -708,27 +708,35 @@ allprojects {
             }
         }
 
-        maven("https://redirector.kotlinlang.org/maven/kotlin-dependencies") {
-            content {
+        exclusiveContent {
+            forRepository {
+                maven("https://redirector.kotlinlang.org/maven/kotlin-dependencies")
+            }
+            filter {
                 includeModule("org.jetbrains.dukat", "dukat")
                 includeModule("org.jetbrains.kotlin", "android-dx")
                 includeModule("org.jetbrains.kotlin", "jcabi-aether")
-                includeModule("org.jetbrains.kotlin", "kotlin-build-gradle-plugin")
                 includeModule("org.jetbrains.kotlin", "protobuf-lite")
                 includeModule("org.jetbrains.kotlin", "protobuf-relocated")
                 includeModule("org.jetbrains.kotlinx", "kotlinx-metadata-klib")
             }
         }
 
-        maven("https://download.jetbrains.com/teamcity-repository") {
-            content {
+        exclusiveContent {
+            forRepository {
+                maven("https://download.jetbrains.com/teamcity-repository")
+            }
+            filter {
                 includeModule("org.jetbrains.teamcity", "serviceMessages")
                 includeModule("org.jetbrains.teamcity.idea", "annotations")
             }
         }
 
-        maven("https://dl.google.com/dl/android/maven2") {
-            content {
+        exclusiveContent {
+            forRepository {
+                maven("https://dl.google.com/dl/android/maven2")
+            }
+            filter {
                 includeGroup("com.android.tools")
                 includeGroup("com.android.tools.build")
                 includeGroup("com.android.tools.layoutlib")

@@ -99,11 +99,12 @@ abstract class AbstractSymbolTest : AbstractAnalysisApiBasedTest() {
 
         val pointersWithRendered = executeOnPooledThreadInReadAction {
             analyzeForTest(analyzeContext ?: mainFile) {
-                val (symbols, symbolForPrettyRendering) = collectSymbols(mainFile, testServices).also {
-                    if (disablePsiBasedLogic) {
-                        it.dropBackingPsi()
+                (val symbols, val symbolForPrettyRendering = symbolsForPrettyRendering) =
+                    collectSymbols(mainFile, testServices).also {
+                        if (disablePsiBasedLogic) {
+                            it.dropBackingPsi()
+                        }
                     }
-                }
 
                 checkContainingFiles(symbols, mainFile, testServices)
 
@@ -119,7 +120,7 @@ abstract class AbstractSymbolTest : AbstractAnalysisApiBasedTest() {
                         }
                     }
                     .distinctBy { it.first }
-                    .map { (symbol, shouldBeRendered) ->
+                    .map { [symbol, shouldBeRendered] ->
                         PointerWithRenderedSymbol(
                             pointer = safePointer(symbol),
                             rendered = renderSymbolForComparison(symbol, directives),
@@ -260,7 +261,7 @@ abstract class AbstractSymbolTest : AbstractAnalysisApiBasedTest() {
         val nonRestoredSymbols = mutableListOf<String>()
 
         val restored = analyzeForTest(analyzeContext ?: ktFile) {
-            pointersWithRendered.mapNotNull { (pointer, expectedRender, shouldBeRendered, psiOnly) ->
+            pointersWithRendered.mapNotNull { (val pointer, val expectedRender = rendered, val shouldBeRendered, val psiOnly) ->
                 fun addNonRestoredSymbol() {
                     if (!psiOnly || !disablePsiBasedLogic) {
                         nonRestoredSymbols += expectedRender
@@ -375,7 +376,7 @@ abstract class AbstractSymbolTest : AbstractAnalysisApiBasedTest() {
                 restoreSymbol(it, disablePsiBasedLogic) ?: error("Unexpectedly non-restored symbol pointer: ${it::class}")
             }
 
-            val pointersToCheck = symbolsToPointersMap.map { (key, value) ->
+            val pointersToCheck = symbolsToPointersMap.map { [key, value] ->
                 value += key.createPointerForTest(disablePsiBasedLogic = disablePsiBasedLogic)
                 value
             }

@@ -52,7 +52,7 @@ internal class JsKlibCompilationOperationImpl private constructor(
     override val sources: List<Path>,
     override val destination: Path,
     compilerArguments: JsArgumentsImpl = JsArgumentsImpl(),
-    private val buildIdToSessionFlagFile: MutableMap<ProjectId, File>,
+    buildIdToSessionFlagFile: MutableMap<ProjectId, File>,
     private val compilerVersion: String,
 ) : BaseCompilationOperationImpl<JsArgumentsImpl, K2JSCompilerArguments>(compilerArguments, buildIdToSessionFlagFile),
     JsKlibCompilationOperation, JsKlibCompilationOperation.Builder,
@@ -316,7 +316,7 @@ private fun List<IncrementalModule>.toIncrementalModuleInfo(rootProjectBuildDir:
         rootProjectBuildDir?.toFile(),
         map.mapKeys { it.key.output.toFile() },
         buildMap {
-            map.forEach { (_, it) -> (getOrPut(it.name) { mutableSetOf() } as MutableSet<IncrementalModuleEntry>).add(it) }
+            map.forEach { [_, it] -> (getOrPut(it.name) { mutableSetOf() } as MutableSet<IncrementalModuleEntry>).add(it) }
         },
         emptyMap(),
         map.mapKeys { it.key.output.toFile() }.toMap(),

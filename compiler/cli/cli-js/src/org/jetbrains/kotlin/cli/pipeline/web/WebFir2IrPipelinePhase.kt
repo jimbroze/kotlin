@@ -131,10 +131,7 @@ private fun runWebKlibCallCheckers(
     val checker = if (configuration.wasmCompilation) {
         WasmKlibCheckers.makeChecker(
             irDiagnosticReporter,
-            configuration,
-            cleanFiles = cleanFilesIrData,
-            // Wasm also needs access to js exports, so collect all
-            exportedNames = irModuleFragment.collectAllExportNames(),
+            configuration
         )
     } else {
         JsKlibCheckers.makeChecker(

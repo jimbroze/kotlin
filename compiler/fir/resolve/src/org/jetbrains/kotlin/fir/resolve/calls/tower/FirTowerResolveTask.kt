@@ -151,11 +151,11 @@ internal abstract class FirBaseTowerResolveTask(
         onImplicitReceiver: (ImplicitReceiverValue<*>, TowerGroup) -> Unit,
         onImplicitCompanionExtensionReceiver: (FirRegularClassSymbol, TowerGroup) -> Unit = { _, _ -> },
     ) {
-        for ((index, localScope) in towerDataElementsForName.reversedFilteredLocalScopes) {
+        for ([index, localScope] in towerDataElementsForName.reversedFilteredLocalScopes) {
             onScope(localScope, null, parentGroup.Local(index))
         }
 
-        for ((depth, lexical) in towerDataElementsForName.nonLocalTowerDataElements.withIndex()) {
+        for ([depth, lexical] in towerDataElementsForName.nonLocalTowerDataElements.withIndex()) {
             if (!lexical.isLocal) {
                 val scope = lexical.scope
                 val staticScopeOwnerSymbol = lexical.staticScopeOwnerSymbol
@@ -231,7 +231,7 @@ internal abstract class FirBaseTowerResolveTask(
         }
 
         val explicitReceiverValue = ExpressionReceiverValue(resolvedQualifier)
-        for ((depth, lexical) in towerDataElementsForName.nonLocalTowerDataElements.withIndex()) {
+        for ([depth, lexical] in towerDataElementsForName.nonLocalTowerDataElements.withIndex()) {
             val scope = lexical.scope
 
             if (!scope.canContainCompanionExtensions()) continue
@@ -303,9 +303,10 @@ internal open class FirTowerResolveTask(
         processCallableScope(info, qualifierReceiver, TowerGroup.QualifierOrClassifier,)
         processClassifierScope(info, qualifierReceiver)
 
-        // Searching for companion extensions triggers a bunch of resolution tasks.
+        // - Searching for companion extensions triggers a bunch of resolution tasks.
         // We skip them for performance reasons when the LF is disabled.
-        if (companionBlocksAndExtensionsEnabled) {
+        // - Collection literal must never resolve to companion extensions
+        if (companionBlocksAndExtensionsEnabled && !info.isNonTrivialCollectionLiteralCall) {
             enumerateTowerLevelsForCompanionExtensions(
                 info,
                 resolvedQualifier,
@@ -371,6 +372,7 @@ internal open class FirTowerResolveTask(
             explicitReceiverValue.toDispatchReceiverMemberScopeTowerLevel(), info,
             parentGroup.Member, ExplicitReceiverKind.DISPATCH_RECEIVER
         )
+        if (info.isNonTrivialCollectionLiteralCall) return
 
         enumerateTowerLevels(
             parentGroup = parentGroup,
@@ -486,7 +488,7 @@ internal open class FirTowerResolveTask(
         if (info.callKind != CallKind.Function || info.name !in HIDES_MEMBERS_NAME_LIST) return
 
         val importingScopes = components.fileImportsScope.asReversed()
-        for ((index, topLevelScope) in importingScopes.withIndex()) {
+        for ([index, topLevelScope] in importingScopes.withIndex()) {
             processHideMembersLevel(
                 receiverValue, topLevelScope, info, index,
                 explicitReceiverKind, parentGroup

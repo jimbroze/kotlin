@@ -232,4 +232,20 @@ public class ForTestCompileRuntime {
             throw ExceptionUtilsKt.rethrow(e);
         }
     }
+
+    public static File lombokCompilerPluginForTests() {
+        return getFileFromProperty(LOMBOK_COMPILER_PLUGIN_JAR_PATH);
+    }
+
+    public static File allOpenCompilerPluginForTests() {
+        return getFileFromProperty(ALLOPEN_COMPILER_PLUGIN_JAR_PATH);
+    }
+
+    public static File noArgCompilerPluginForTests() {
+        return getFileFromProperty(NOARG_COMPILER_PLUGIN_JAR_PATH);
+    }
+
+    public static @NotNull File mainKtsJar() {
+        return getFileFromProperty(MAIN_KTS_JAR_PATH);
+    }
 }

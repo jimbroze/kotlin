@@ -1828,8 +1828,8 @@ open class FirExpressionsResolveTransformer(transformer: FirAbstractBodyResolveT
             buildAnnotationArgumentMapping {
                 source = annotationCall.argumentMapping.source
                 mapping.putAll(annotationCall.argumentMapping.mapping)
-                for ((name, result) in evaluationResult) {
-                    mapping[name] = result.unwrapOr<FirExpression> { } ?: continue
+                for ([name, result] in evaluationResult) {
+                    mapping[name] = result.resultOrNull<FirExpression>() ?: continue
                 }
             }
         )
@@ -2303,18 +2303,30 @@ open class FirExpressionsResolveTransformer(transformer: FirAbstractBodyResolveT
                     transformCollectionLiteralInAnnotation(collectionLiteral, data)
                 }
                 else -> {
+                    if (data !is ResolutionMode.ContextDependent && data !is ResolutionMode.WithExpectedType) {
+                        return transformFunctionCallInternal(
+                            context(resolutionContext) {
+                                buildCollectionLiteralCallForFallback(collectionLiteral)
+                            },
+                            data,
+                            CallResolutionMode.REGULAR,
+                        )
+                    }
                     collectionLiteral.transformAnnotations(transformer, data)
                     dataFlowAnalyzer.enterCallArguments(collectionLiteral, collectionLiteral.arguments)
                     collectionLiteral.replaceArgumentList(collectionLiteral.argumentList.transform(this, ResolutionMode.ContextDependent))
                     dataFlowAnalyzer.exitCallArguments() // collectionLiteral
-                    if (data != ResolutionMode.ContextDependent) {
-                        components.syntheticCallGenerator.resolveCollectionLiteralExpressionWithSyntheticOuterCall(
-                            collectionLiteral, data as? ResolutionMode.WithExpectedType, resolutionContext,
-                        )
-                    } else {
-                        collectionLiteral.also {
-                            dataFlowAnalyzer.enterFunctionCall(it)
-                            dataFlowAnalyzer.exitFunctionCall(it, callCompleted = false)
+                    when (data) {
+                        is ResolutionMode.WithExpectedType -> {
+                            components.syntheticCallGenerator.resolveCollectionLiteralExpressionWithSyntheticOuterCall(
+                                collectionLiteral, data, resolutionContext,
+                            )
+                        }
+                        is ResolutionMode.ContextDependent -> {
+                            collectionLiteral.also {
+                                dataFlowAnalyzer.enterFunctionCall(it)
+                                dataFlowAnalyzer.exitFunctionCall(it, callCompleted = false)
+                            }
                         }
                     }
                 }

@@ -89,6 +89,7 @@ internal fun Project.createGeneralTestTask(
     taskName: String = "test",
     parallel: Boolean = false,
     jUnitMode: JUnitMode,
+    javaLauncher: JdkMajorVersion = DEFAULT_JAVA_LAUNCHER_FOR_TESTS,
     maxHeapSizeMb: Int? = null,
     minHeapSizeMb: Int? = null,
     maxMetaspaceSizeMb: Int = 512,
@@ -111,6 +112,8 @@ internal fun Project.createGeneralTestTask(
         evaluationDependsOn(":test-instrumenter")
     }
     return getOrCreateTask<Test>(taskName) {
+        this.javaLauncher.set(getToolchainLauncherFor(javaLauncher))
+
         if (taskName != "test" && classpath.isEmpty) {
             classpath = sourceSets.getByName("test").runtimeClasspath
             testClassesDirs = sourceSets.getByName("test").output.classesDirs

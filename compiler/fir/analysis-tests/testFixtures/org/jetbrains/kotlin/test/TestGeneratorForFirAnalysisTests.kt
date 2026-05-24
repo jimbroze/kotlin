@@ -42,6 +42,10 @@ fun main(args: Array<String>) {
                     init = init
                 )
 
+                testClass<AbstractFirLightTreeDiagnosticsWithLanguageFeatureDisabledTest>(
+                    init = init
+                )
+
                 testClass<AbstractFirLightTreeDiagnosticsWithoutAliasExpansionTest>(
                     init = init
                 )
@@ -120,13 +124,6 @@ fun main(args: Array<String>) {
             }
             testClass<AbstractPhasedJvmDiagnosticPsiTest> {
                 phasedModel(allowKts = true)
-            }
-
-            for (deprecated in listOf("fir/analysis-tests/testData/resolve", "fir/analysis-tests/testData/resolveWithStdlib")) {
-                val dir = File("$testDataRoot/$deprecated")
-                if (dir.walk(FileWalkDirection.BOTTOM_UP).any { it.isFile }) {
-                    error("'$deprecated' was merged into 'testData/diagnostics' and mustn't be used anymore.")
-                }
             }
         }
 

@@ -321,3 +321,48 @@ fun Test.withPluginSandboxJar() {
         ), TestCompilePaths.PLUGIN_SANDBOX_JAR_PATH
     )
 }
+
+fun Test.withLombokCompilerPluginJar() {
+    addClasspathProperty(
+        configurationElements(
+            "lombokCompilerPluginJar",
+            dependencies = { add(project.dependencies.project(":kotlin-lombok-compiler-plugin")) }
+        ), TestCompilePaths.LOMBOK_COMPILER_PLUGIN_JAR_PATH
+    )
+}
+
+fun Test.withAllOpenCompilerPluginJar() {
+    addClasspathProperty(
+        configurationElements(
+            "allOpenCompilerPluginJar",
+            dependencies = { add(project.dependencies.project(":kotlin-allopen-compiler-plugin")) }
+        ), TestCompilePaths.ALLOPEN_COMPILER_PLUGIN_JAR_PATH
+    )
+}
+
+fun Test.withNoArgCompilerPluginJar() {
+    addClasspathProperty(
+        configurationElements(
+            "noArgCompilerPluginJar",
+            dependencies = { add(project.dependencies.project(":kotlin-noarg-compiler-plugin")) }
+        ), TestCompilePaths.NOARG_COMPILER_PLUGIN_JAR_PATH
+    )
+}
+
+fun Test.withMainKtsJar() {
+    addClasspathProperty(
+        configurationElements(
+            "mainKtsJar",
+            dependencies = { add(project.dependencies.project(":kotlin-main-kts")) }
+        ), TestCompilePaths.MAIN_KTS_JAR_PATH
+    )
+}
+
+fun Test.withReflectShadowJar() {
+    addClasspathProperty(
+        configurationElements(
+            "reflectShadowJar",
+            dependencies = { add(project.dependencies.project(":kotlin-reflect", "shadowJar")) }
+        ), TestCompilePaths.KOTLIN_REFLECT_SHADOW_JAR_PATH
+    )
+}

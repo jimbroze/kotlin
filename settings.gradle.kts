@@ -2,6 +2,7 @@ import java.io.File
 import java.util.Properties
 
 pluginManagement {
+    includeBuild("repo/kotlin-build-helpers")
     includeBuild("repo/gradle-settings-conventions")
     includeBuild("repo/gradle-build-conventions")
 
@@ -42,6 +43,7 @@ pluginManagement {
 
 plugins {
     id("internal-gradle-setup") // it's recommended to apply this plugin at first, as it changes the local.properties file
+    id("kotlin-build-helpers")
     id("kotlin-bootstrap")
     id("develocity")
     id("jvm-toolchain-provisioning")
@@ -988,10 +990,12 @@ project(":kotlin-scripting-compiler-impl").projectDir = File("$rootDir/plugins/s
 
 // Uncomment to use locally built protobuf-relocated
 // includeBuild("dependencies/protobuf")
+
+includeBuild("kotlin-native/build-tools") {
+    name = "native-build-tools"
+}
+
 if (buildProperties.isKotlinNativeEnabled.get()) {
-    includeBuild("kotlin-native/build-tools") {
-        name = "native-build-tools"
-    }
     include(":kotlin-native:dependencies")
     include(":kotlin-native:endorsedLibraries:kotlinx.cli")
     include(":kotlin-native:Interop:StubGenerator")

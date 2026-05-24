@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.analysis.api.platform.KotlinPlatformSettings
 import org.jetbrains.kotlin.analysis.api.platform.declarations.*
 import org.jetbrains.kotlin.analysis.api.platform.mergeSpecificProviders
 import org.jetbrains.kotlin.analysis.api.projectStructure.*
+import org.jetbrains.kotlin.analysis.api.standalone.base.packages.KotlinStandalonePackageNamesProvider
 import org.jetbrains.kotlin.analysis.api.standalone.base.projectStructure.StandaloneProjectFactory
 import org.jetbrains.kotlin.fileClasses.javaFileFacadeFqName
 import org.jetbrains.kotlin.name.*
@@ -32,6 +33,7 @@ class KotlinStandaloneDeclarationProvider internal constructor(
     private val contextualModule: KaModule?,
     private val environment: CoreApplicationEnvironment,
     private val shouldComputeBinaryLibraryPackageSets: Boolean,
+    private val packageNamesProvider: KotlinStandalonePackageNamesProvider?,
 ) : KotlinDeclarationProvider {
     private val KtElement.inScope: Boolean
         get() = containingKtFile.virtualFile in scope
@@ -96,7 +98,8 @@ class KotlinStandaloneDeclarationProvider internal constructor(
                 if (contextualModule.canComputePackageSetFromIndex) {
                     computePackageSetFromIndex()
                 } else {
-                    computeBinaryLibraryModulePackageSet(contextualModule)
+                    packageNamesProvider?.getPackageNamesInScope(scope)?.mapTo(mutableSetOf()) { it.asString() }
+                        ?: computeBinaryLibraryModulePackageSet(contextualModule)
                 }
 
             else -> null
@@ -115,7 +118,7 @@ class KotlinStandaloneDeclarationProvider internal constructor(
     }
 
     private fun <T : KtDeclaration> MutableSet<String>.addPackageNamesInScope(map: Map<FqName, Set<T>>) {
-        map.forEach { (fqName, declarations) ->
+        map.forEach { [fqName, declarations] ->
             if (declarations.any { it.inScope }) {
                 add(fqName.asString())
             }
@@ -233,8 +236,28 @@ class KotlinStandaloneDeclarationProviderFactory(
     private val index: KotlinStandaloneDeclarationIndex
         get() = indexData.index
 
+    private var packageNamesProvider: KotlinStandalonePackageNamesProvider? = null
+
+    /**
+     * Sets the [KotlinStandalonePackageNamesProvider] shared with [KotlinStandalonePackageProviderFactory].
+     *
+     * Must be called by the session builder after this factory is registered and after
+     * [getAdditionalCreatedKtFiles] has been used to populate the provider, but before any
+     * [createDeclarationProvider] call. Not intended for use outside of session setup.
+     */
+    fun setPackageNamesProvider(provider: KotlinStandalonePackageNamesProvider) {
+        packageNamesProvider = provider
+    }
+
     override fun createDeclarationProvider(scope: GlobalSearchScope, contextualModule: KaModule?): KotlinDeclarationProvider {
-        return KotlinStandaloneDeclarationProvider(index, scope, contextualModule, environment, shouldComputeBinaryLibraryPackageSets)
+        return KotlinStandaloneDeclarationProvider(
+            index,
+            scope,
+            contextualModule,
+            environment,
+            shouldComputeBinaryLibraryPackageSets,
+            packageNamesProvider
+        )
     }
 
     fun getAdditionalCreatedKtFiles(): List<KtFile> {

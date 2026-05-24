@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.express
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.expressionTypeProvider.AbstractDeclarationReturnTypeTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.expressionTypeProvider.AbstractExpectedExpressionTypeTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.expressionTypeProvider.AbstractHLExpressionTypeTest
+import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.fileAnnotationProvider.AbstractContainingFileAnnotationProviderTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.inheritorsProvider.AbstractDanglingFileSealedInheritorsTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.inheritorsProvider.AbstractSealedInheritorsTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.javaInteroperabilityComponent.AbstractDeclarationTypeAsPsiTypeTest
@@ -66,7 +67,6 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.typePro
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.typeRelationChecker.*
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.visibilityChecker.AbstractVisibilityCheckerTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.danglingFileAnalysis.AbstractDanglingFileResolutionModeProviderTest
-import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.AbstractIsReferenceToTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.AbstractReferenceImportAliasTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.AbstractReferenceShortenerForWholeFileTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.AbstractReferenceShortenerTest
@@ -77,7 +77,10 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.symbols.*
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.types.*
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.types.typeCreation.AbstractTypeCreatorDslTest
 import org.jetbrains.kotlin.analysis.test.framework.services.TargetPlatformEnum
-import org.jetbrains.kotlin.analysis.test.framework.test.configurators.*
+import org.jetbrains.kotlin.analysis.test.framework.test.configurators.AnalysisApiMode
+import org.jetbrains.kotlin.analysis.test.framework.test.configurators.AnalysisApiTestConfiguratorFactoryData
+import org.jetbrains.kotlin.analysis.test.framework.test.configurators.AnalysisSessionMode
+import org.jetbrains.kotlin.analysis.test.framework.test.configurators.TestModuleKind
 import org.jetbrains.kotlin.generators.dsl.TestGroup
 import org.jetbrains.kotlin.generators.tests.analysis.api.dsl.*
 import org.jetbrains.kotlin.generators.util.TestGeneratorUtil
@@ -118,7 +121,6 @@ fun AnalysisApiTestGroup.generateAnalysisApiTests() {
         test<AbstractResolveCallTest>(init = singleByPsiInit)
         test<AbstractResolveCandidatesTest>(init = singleByPsiInit)
         test<AbstractResolveSymbolTest>(init = singleByPsiInit)
-        test<AbstractResolveReferenceTest>(init = singleByPsiInit)
 
         group(filter = testModuleKindIs(TestModuleKind.SourceLike)) {
             val allByPsiInit: TestGroup.TestClass.(data: AnalysisApiTestConfiguratorFactoryData) -> Unit = { data ->
@@ -128,19 +130,22 @@ fun AnalysisApiTestGroup.generateAnalysisApiTests() {
             test<AbstractResolveCallByFileTest>(init = allByPsiInit)
             test<AbstractResolveCandidatesByFileTest>(init = allByPsiInit)
             test<AbstractResolveSymbolByFileTest>(init = allByPsiInit)
-            test<AbstractResolveReferenceByFileTest>(init = allByPsiInit)
+
+            test<AbstractResolveSymbolWithResolveExtensionTest> {
+                model(it, "resolveExtensions")
+            }
+        }
+
+        test<AbstractPhysicalResolveDanglingFileSymbolTest> {
+            model("danglingFile", pattern = TestGeneratorUtil.KT_WITHOUT_DOTS_IN_NAME)
+        }
+
+        test<AbstractNonPhysicalResolveDanglingFileSymbolTest> {
+            model("danglingFile", pattern = TestGeneratorUtil.KT_WITHOUT_DOTS_IN_NAME)
         }
     }
 
     group(filter = testModuleKindIs(TestModuleKind.Source, TestModuleKind.LibrarySource)) {
-        test<AbstractPhysicalResolveDanglingFileReferenceTest> {
-            model("danglingFileReferenceResolve", pattern = TestGeneratorUtil.KT_WITHOUT_DOTS_IN_NAME)
-        }
-
-        test<AbstractNonPhysicalResolveDanglingFileReferenceTest> {
-            model("danglingFileReferenceResolve", pattern = TestGeneratorUtil.KT_WITHOUT_DOTS_IN_NAME)
-        }
-
         test<AbstractDanglingFileResolutionModeProviderTest>(filter = testModuleKindIs(TestModuleKind.Source)) {
             model("danglingFileResolutionModeProvider", pattern = TestGeneratorUtil.KT_WITHOUT_DOTS_IN_NAME)
         }
@@ -171,7 +176,6 @@ fun AnalysisApiTestGroup.generateAnalysisApiTests() {
 
     group(filter = testModuleKindIs(TestModuleKind.SourceLike)) {
         generateAnalysisApiComponentsTests()
-        generateResolveExtensionsTests()
     }
 
     component(
@@ -187,18 +191,6 @@ fun AnalysisApiTestGroup.generateAnalysisApiTests() {
 
 
     generateAnalysisApiNonComponentsTests()
-}
-
-private fun AnalysisApiTestGroup.generateResolveExtensionsTests() {
-    group(
-        "resolveExtensions",
-        filter = analysisSessionModeIs(AnalysisSessionMode.Normal) and
-                testModuleKindIs(TestModuleKind.Source)
-    ) {
-        test<AbstractResolveReferenceWithResolveExtensionTest> {
-            model(it, "referenceResolve")
-        }
-    }
 }
 
 private fun AnalysisApiTestGroup.generateAnalysisApiNonComponentsTests() {
@@ -279,12 +271,6 @@ private fun AnalysisApiTestGroup.generateAnalysisApiNonComponentsTests() {
                 filter = analysisSessionModeIs(AnalysisSessionMode.Normal)
             ) {
                 model(it, "importAliases")
-            }
-        }
-
-        group("references") {
-            test<AbstractIsReferenceToTest> {
-                model(it, "isReferenceTo")
             }
         }
 
@@ -549,6 +535,10 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
 
         test<AbstractCanBeOperatorTest> {
             model(it, "canBeOperator")
+        }
+
+        test<AbstractContainingFileAnnotationProviderTest> {
+            model(it, "containingFileAnnotations")
         }
     }
 

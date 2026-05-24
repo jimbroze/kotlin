@@ -10,13 +10,13 @@ import com.intellij.psi.util.parentOfType
 import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.analysis.api.diagnostics.KaDiagnostic
 import org.jetbrains.kotlin.analysis.api.fir.*
-import org.jetbrains.kotlin.analysis.api.fir.references.*
 import org.jetbrains.kotlin.analysis.api.fir.references.FirReferenceResolveHelper.getQualifierSelected
 import org.jetbrains.kotlin.analysis.api.fir.references.FirReferenceResolveHelper.getSymbolsByNameArgumentExpression
 import org.jetbrains.kotlin.analysis.api.fir.references.FirReferenceResolveHelper.getSymbolsByResolvedImport
 import org.jetbrains.kotlin.analysis.api.fir.references.FirReferenceResolveHelper.getSymbolsForResolvedQualifier
 import org.jetbrains.kotlin.analysis.api.fir.references.FirReferenceResolveHelper.getSymbolsForResolvedTypeRef
 import org.jetbrains.kotlin.analysis.api.fir.references.FirReferenceResolveHelper.toTargetSymbol
+import org.jetbrains.kotlin.analysis.api.fir.references.KDocReferenceResolver
 import org.jetbrains.kotlin.analysis.api.fir.symbols.KaFirArrayOfSymbolProvider.arrayOfSymbol
 import org.jetbrains.kotlin.analysis.api.fir.utils.firSymbol
 import org.jetbrains.kotlin.analysis.api.fir.utils.processEqualsFunctions
@@ -69,8 +69,6 @@ import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.fir.utils.exceptions.withFirSymbolEntry
-import org.jetbrains.kotlin.idea.references.KtReference
-import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
@@ -121,33 +119,26 @@ internal class KaFirResolver(
      * companion object in a single dot-qualified expression - only the
      * last reference in the chain can do that.
      *
-     * So, if the PSI element of the [KtReference] and the whole [FirResolvedQualifier]
-     * are different, we can certainly say that the [KtReference] does not
+     * So, if the PSI element of the [KtSimpleNameExpression] and the whole [FirResolvedQualifier]
+     * are different, we can certainly say that the [KtSimpleNameExpression] does not
      * point to the companion object.
      */
-    override fun KtReference.isImplicitReferenceToCompanion(): Boolean = withPsiValidityAssertion(element) {
-        if (this !is KtSimpleNameReference) {
-            return false
-        }
-
-        val implicitInvokeCall = run {
-            val parentCallExpression = element.parent as? KtCallExpression
-            parentCallExpression?.getOrBuildFir(analysisSession.resolutionFacade) as? FirImplicitInvokeCall
-        }
-
-        val wholeQualifier = implicitInvokeCall?.explicitReceiver
-            ?: element.getOrBuildFir(analysisSession.resolutionFacade)
-
-        return wholeQualifier is FirResolvedQualifier && wholeQualifier.resolvedToCompanionObject
-    }
-
-    override val KtReference.usesContextSensitiveResolution: Boolean
-        get() = withPsiValidityAssertion(element) {
-            if (this !is KtSimpleNameReference) {
-                return false
+    override val KtSimpleNameExpression.isImplicitReferenceToCompanion: Boolean
+        get() = withPsiValidityAssertion {
+            val implicitInvokeCall = run {
+                val parentCallExpression = parent as? KtCallExpression
+                parentCallExpression?.getOrBuildFir(analysisSession.resolutionFacade) as? FirImplicitInvokeCall
             }
 
-            val fir = element.getOrBuildFir(analysisSession.resolutionFacade) ?: return false
+            val wholeQualifier = implicitInvokeCall?.explicitReceiver
+                ?: getOrBuildFir(analysisSession.resolutionFacade)
+
+            return wholeQualifier is FirResolvedQualifier && wholeQualifier.resolvedToCompanionObject
+        }
+
+    override val KtSimpleNameExpression.usesContextSensitiveResolution: Boolean
+        get() = withPsiValidityAssertion {
+            val fir = getOrBuildFir(analysisSession.resolutionFacade) ?: return false
             when (fir) {
                 is FirResolvedTypeRef -> fir.resolvedSymbolOrigin == FirResolvedSymbolOrigin.ContextSensitive
                 is FirResolvedQualifier -> fir.resolvedSymbolOrigin == FirResolvedSymbolOrigin.ContextSensitive
@@ -180,29 +171,6 @@ internal class KaFirResolver(
             else -> analysisSession.cacheStorage.resolveSymbolCache.value.getOrPut(psi) {
                 resolveSymbol(psi)
             }
-        }
-    }
-
-    @OptIn(KtExperimentalApi::class)
-    override fun performSymbolResolution(reference: KtReference): KaSymbolResolutionAttempt? {
-        if (reference !is KaFirReference) {
-            return null
-        }
-
-        return when (reference) {
-            // For most constructions the element could be used instead
-            is KaFirArrayAccessReference,
-            is KaFirCollectionLiteralReference,
-            is KaFirConstructorDelegationReference,
-            is KaFirDestructuringDeclarationReference,
-            is KaFirForLoopInReference,
-            is KaFirPropertyDelegationMethodsReference,
-            is KaFirSimpleNameReference,
-            is KaFirKDocReference,
-                -> tryResolveSymbolsForReferenceViaElement(reference)
-
-            is KaFirDefaultAnnotationArgumentReference -> tryResolveSymbolsForDefaultAnnotationArgumentReference(reference)
-            is KaFirInvokeFunctionReference -> tryResolveSymbolsForInvokeReference(reference)
         }
     }
 
@@ -266,23 +234,6 @@ internal class KaFirResolver(
         is FirPackageDirective if psi is KtSimpleNameExpression -> toKaSymbolResolutionAttempt(psi)
         is FirResolvedImport if psi is KtSimpleNameExpression -> toKaSymbolResolutionAttempt(psi)
         else -> null
-    }
-
-    override fun KtReference.resolveToSymbols(): Collection<KaSymbol> = withPsiValidityAssertion(element) {
-        return doResolveToSymbols(this)
-    }
-
-    private fun doResolveToSymbols(reference: KtReference): Collection<KaSymbol> {
-        checkWithAttachment(
-            reference is KaFirReference,
-            { "${reference::class.simpleName} is not extends ${KaFirReference::class.simpleName}" },
-        ) {
-            withPsiEntry("reference", reference.element)
-        }
-
-        with(reference) {
-            return analysisSession.resolveToSymbols()
-        }
     }
 
     override fun performCallResolution(psi: KtElement): KaCallResolutionAttempt? = wrapError(psi) {
@@ -921,7 +872,7 @@ internal class KaFirResolver(
 
         val typeMapping = typeArgumentMapping as? TypeArgumentMapping.Mapped
         return buildMap {
-            for ((index, parameterSymbol) in typeParameters.withIndex()) {
+            for ([index, parameterSymbol] in typeParameters.withIndex()) {
                 val explicitTypeArgument = typeMapping?.get(index) as? FirTypeProjectionWithVariance
                 if (explicitTypeArgument != null) {
                     put(parameterSymbol, explicitTypeArgument.typeRef.coneType)
@@ -1926,7 +1877,7 @@ internal class KaFirResolver(
         if (typeArguments.size != typeParameters.size) return emptyMap()
 
         return buildMap(typeArguments.size) {
-            for ((index, projection) in typeArguments.withIndex()) {
+            for ([index, projection] in typeArguments.withIndex()) {
                 if (projection !is ConeKotlinType) return emptyMap()
                 put(typeParameters[index], projection)
             }
@@ -1951,7 +1902,7 @@ internal class KaFirResolver(
 
         val result = mutableMapOf<FirTypeParameterSymbol, ConeKotlinType>()
 
-        for ((index, typeParameter) in typeParameters.withIndex()) {
+        for ([index, typeParameter] in typeParameters.withIndex()) {
             // After resolution all type arguments should be usual types (not FirPlaceholderProjection)
             val typeArgument = typeArguments[index]
             if (typeArgument !is FirTypeProjectionWithVariance || typeArgument.variance != Variance.INVARIANT) return emptyMap()
@@ -2030,7 +1981,7 @@ internal class KaFirResolver(
     }
 
     private fun Map<FirTypeParameterSymbol, ConeKotlinType>.asKaTypeParametersMapping(): Map<KaTypeParameterSymbol, KaType> {
-        return map { (key, value) ->
+        return map { [key, value] ->
             firSymbolBuilder.classifierBuilder.buildTypeParameterSymbol(key) to value.asKaType()
         }.toMap()
     }
@@ -2366,7 +2317,7 @@ internal class KaFirResolver(
         }
 
         val argumentMapping = LinkedHashMap<KtExpression, KaVariableSignature<KaParameterSymbol>>(size)
-        this.forEach { (firExpression, firValueParameter) ->
+        this.forEach { [firExpression, firValueParameter] ->
             val parameterSymbol = paramSignatureByName[firValueParameter.name] ?: return@forEach
             mapArgumentExpressionToParameter(firExpression, parameterSymbol, argumentMapping)
         }

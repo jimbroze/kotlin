@@ -1,5 +1,5 @@
 [versions]
-kotlin-release = "2.4.0-Beta2"
+kotlin-release = "2.4.0-RC"
 dexMemberList = "4.1.1"
 dokka = "2.2.0"
 gradle-custom-user-data = "2.4.0"
@@ -17,7 +17,7 @@ kotlinx-serialization = "1.7.3"
 # Check the version in this file: https://github.com/JetBrains/intellij-community/blob/cc37866d3827c51712f9856f5e580d405784d1ef/.idea/libraries/kotlinx_coroutines_core.xml
 kotlinx-coroutines = "1.8.0"
 shadow = "9.3.2"
-spdx = "0.10.0-dev-15"
+spdx = "0.11.0"
 proguard = "7.4.2"
 ktor = "3.1.3"
 kotlinx-bcv = "0.17.0"
@@ -81,10 +81,12 @@ maven-xml-impl = "4.0.0-beta-5"
 yarn = "1.22.22"
 # This is also the version of bouncycastle that is used by KGP
 bouncycastle = "1.84"
+kotlin-before-bta-v2 = "2.2.21"
 
 [libraries]
 kotlin-compiler-arguments-release = { module = "org.jetbrains.kotlin:kotlin-compiler-arguments-description", version.ref = "kotlin-release" }
 kotlin-compiler-release = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlin-release" }
+kotlin-compiler-before-bta-v2 = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlin-before-bta-v2" }
 dexMemberList = { module = "com.jakewharton.dex:dex-member-list", version.ref = "dexMemberList" }
 dokka-gradlePlugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "dokka" }
 # Usages are in gradle-plugins-documentation.gradle.kts

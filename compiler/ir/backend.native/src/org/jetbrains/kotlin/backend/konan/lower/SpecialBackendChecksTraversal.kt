@@ -154,9 +154,28 @@ private class BackendChecker(
 
     private fun IrConstructor.overridesConstructor(other: IrConstructor) =
             this.parameters.size == other.parameters.size &&
-                    this.parameters.zip(other.parameters).all { (l, r) ->
+                    this.parameters.zip(other.parameters).all { [l, r] ->
                         l.name == r.name && l.type == r.type
                     }
+
+    private fun checkOverrideInitDoesNotCaptureOuterState(irClass: IrClass) {
+        if (!irClass.isLocal) return
+        val overrideInitConstructors = irClass.declarations.filterIsInstance<IrConstructor>().filter { it.isOverrideInit() }
+        if (overrideInitConstructors.isEmpty()) return
+        val closure = ClosureAnnotator(irClass, irClass).getClassClosure(irClass)
+        val captured = closure.capturedValues.map { it.owner.name.asString() } +
+                closure.capturedTypeParameters.map { it.name.asString() }
+        if (captured.isEmpty()) return
+        val capturedRendered = captured.joinToString(prefix = "'", separator = "', '", postfix = "'")
+        for (constructor in overrideInitConstructors) {
+            reportError(
+                constructor,
+                "A local Kotlin Obj-C class '${irClass.name}' with an @${InteropFqNames.objCOverrideInit} " +
+                        "constructor cannot capture values from the enclosing scope. " +
+                        "Captured: $capturedRendered"
+            )
+        }
+    }
 
     // Already migrated to FIR Checker: FirNativeObjCActionChecker.checkCanGenerateActionImp()
     private fun checkCanGenerateActionImp(function: IrSimpleFunction) {
@@ -287,6 +306,8 @@ private class BackendChecker(
                 )
             }
         }
+
+        checkOverrideInitDoesNotCaptureOuterState(irClass)
     }
 
     override fun visitDelegatingConstructorCall(expression: IrDelegatingConstructorCall) {
@@ -411,7 +432,7 @@ private class BackendChecker(
 
         when (val intrinsicType = tryGetIntrinsicType(expression)) {
             IntrinsicType.INTEROP_STATIC_C_FUNCTION -> {
-                val (target, captures) = getUnboundReferencedFunction(expression.arguments[0]!!)
+                (val target = function, val captures) = getUnboundReferencedFunction(expression.arguments[0]!!)
 
                 if (target == null || target.symbol !is IrSimpleFunctionSymbol)
                     reportBoundFunctionReferenceError(expression, callee, captures)
@@ -619,7 +640,7 @@ private fun BackendChecker.checkCanGenerateCFunctionCallOrGlobalAccess(expressio
     val callee = expression.symbol.owner
 
     if (isInvoke) {
-        for ((idx, param) in callee.parameters.filter { it.kind == IrParameterKind.Regular }.withIndex()) {
+        for ([idx, param] in callee.parameters.filter { it.kind == IrParameterKind.Regular }.withIndex()) {
             checkCanMapCalleeFunctionParameter(
                     type = expression.typeArguments[idx]!!,
                     isObjCMethod = false,
@@ -638,7 +659,7 @@ private fun BackendChecker.checkCanGenerateCFunctionCallOrGlobalAccess(expressio
 }
 
 private fun BackendChecker.checkCanAddArguments(arguments: List<IrExpression?>, callee: IrFunction, isObjCMethod: Boolean) {
-    for ((argument, parameter) in arguments.zip(callee.parameters)) {
+    for ([argument, parameter] in arguments.zip(callee.parameters)) {
         if (parameter.isVararg)
             checkCanHandleArgumentForVarargParameter(argument, isObjCMethod)
         else

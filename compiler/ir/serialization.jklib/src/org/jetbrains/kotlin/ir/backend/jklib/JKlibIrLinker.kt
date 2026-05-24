@@ -113,7 +113,7 @@ class JKlibIrLinker(
     ) : IrModuleDeserializer(moduleDescriptor, KotlinAbiVersion.CURRENT) {
         override val klib: KotlinLibrary get() = error("'klib' is not available for ${this::class.java}")
 
-        override fun contains(idSig: IdSignature): Boolean = true
+        override fun contains(idSig: IdSignature): Boolean = resolveDescriptor(idSig) != null
 
         private val descriptorFinder = DescriptorByIdSignatureFinderImpl(
             moduleDescriptor,
@@ -179,6 +179,9 @@ class JKlibIrLinker(
         )
 
         private val deserializedSymbols = mutableMapOf<IdSignature, IrSymbol>()
+
+        override fun contains(idSig: IdSignature): Boolean =
+            super.contains(idSig) || descriptorByIdSignatureFinder.findDescriptorBySignature(idSig) != null
 
         override fun tryDeserializeIrSymbol(
             idSig: IdSignature,

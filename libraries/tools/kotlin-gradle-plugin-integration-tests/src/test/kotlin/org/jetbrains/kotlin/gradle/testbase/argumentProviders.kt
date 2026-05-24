@@ -141,10 +141,9 @@ open class GradleArgumentsProvider : ArgumentsProvider {
     protected fun gradleVersions(context: ExtensionContext): Set<GradleVersion> {
         val versionsAnnotation = findAnnotationOrNull<GradleTestVersions>(context) ?: GradleTestVersions()
 
-        fun max(a: GradleVersion, b: GradleVersion) = if (a >= b) a else b
         val minGradleVersion = GradleVersion.version(versionsAnnotation.minVersion)
         // Max is used for cases when test is annotated with `@GradleTestVersions(minVersion = LATEST)` but MAX_SUPPORTED isn't latest
-        val maxGradleVersion = max(GradleVersion.version(versionsAnnotation.maxVersion), minGradleVersion)
+        val maxGradleVersion = maxOf(GradleVersion.version(versionsAnnotation.maxVersion), minGradleVersion)
         if (testFederationMode == TestFederationMode.Smoke) return setOf(maxGradleVersion)
 
         val additionalGradleVersions = versionsAnnotation
@@ -240,7 +239,7 @@ class GradleAndJdkArgumentsProvider : GradleArgumentsProvider() {
                     .map { it to providedJdk }
             }
             .asSequence()
-            .filter { (gradleVersion, _) -> versionFilter.map { gradleVersion == it }.orElse(true) }
+            .filter { [gradleVersion, _] -> versionFilter.map { gradleVersion == it }.orElse(true) }
             .map {
                 Arguments.of(it.first, it.second)
             }

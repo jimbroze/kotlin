@@ -51,9 +51,7 @@ dependencies {
 }
 
 projectTests {
-    testTask(jUnitMode = JUnitMode.JUnit5) {
-        javaLauncher.value(project.getToolchainLauncherFor(JdkMajorVersion.JDK_11_0))
-    }
+    testTask(jUnitMode = JUnitMode.JUnit5)
 }
 
 val generateJson = tasks.register<JavaExec>("generateJson") {

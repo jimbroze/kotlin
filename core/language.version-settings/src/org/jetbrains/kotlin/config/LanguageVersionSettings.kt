@@ -38,6 +38,11 @@ sealed class LanguageFeatureBehaviorAfterSinceVersion {
  * will force generation of pre-release binaries (given that [sinceVersion] > [LanguageVersion.LATEST_STABLE]).
  * Use it for features that involve generation of non-trivial low-level code with non-finalized design.
  *
+ * @property enabledInLatestLVTests
+ * This property is used internally by test infrastructure to enable the feature for the latest language version
+ * test runners. Handy when the feature changes user-visible behavior of already existing language constructs
+ * or is some internal refactoring, but for some reason can't have [sinceVersion] set.
+ *
  * @property testOnly
  * If 'true', then it's impossible to enable this feature using `-XXLanguage:+FeatureName` CLI flag.
  * Should be used for features which are already added to the compiler, but are not ready to be shown to users.
@@ -52,6 +57,7 @@ enum class LanguageFeature(
     val sinceApiVersion: ApiVersion = ApiVersion.KOTLIN_1_0,
     val issue: String,
     private val enabledInProgressiveMode: Boolean = false,
+    val enabledInLatestLVTests: Boolean = false,
     val forcesPreReleaseBinaries: Boolean = false,
     val forcesPreReleaseBinariesBefore: LanguageVersion? = null,
     val testOnly: Boolean = false,
@@ -512,6 +518,7 @@ enum class LanguageFeature(
 
     ErrorAboutDataClassCopyVisibilityChange(KOTLIN_2_5, enabledInProgressiveMode = true, "KT-11914"), // KT-11914. Deprecation phase 2
     KlibAnnotationsInMetadata(sinceVersion = KOTLIN_2_5, "KT-81466"),
+    ReportDeprecationsOfClassifiersInImplicitInvokes(sinceVersion = KOTLIN_2_5, enabledInProgressiveMode = true, "KT-82456"),
     ForbidArrayOfNothingInLhsOfClassLiteral(sinceVersion = KOTLIN_2_5, enabledInProgressiveMode = true, "KT-84589"),
     ForbidReturnInExpressionBodyWithoutExplicitTypeEdgeCases(sinceVersion = KOTLIN_2_5, "KTLC-288"),
     ForbidExternalEnumEntriesAndPrimaryConstructorProperties(sinceVersion = KOTLIN_2_5, enabledInProgressiveMode = true, "KTLC-389"),
@@ -526,14 +533,29 @@ enum class LanguageFeature(
     WrapContinuationForTailCallFunctions(KOTLIN_2_5, sinceApiVersion = ApiVersion.KOTLIN_2_5, "KT-74051"),
     ForbidOperatorEqualsInEnumEntriesAndAnonymousObjects(KOTLIN_2_5, enabledInProgressiveMode = true, "KT-86143"),
     ForbidAnnotationsTypeArgumentsAndParenthesesForPackageQualifier(sinceVersion = KOTLIN_2_5, enabledInProgressiveMode = true, "KTLC-396"),
-    EagerLambdaAnalysis(sinceVersion = KOTLIN_2_5, "KT-51107"), // Do not hesitate to move it to KOTLIN_2_6 once it's introduced
-    UnitConversionsOnArbitraryExpressions(sinceVersion = KOTLIN_2_5, "KT-84393"),
-    InferThrowableTypeParameterToUpperBound(KOTLIN_2_5, "KT-82961"),
     EnhancementsOfSecondIncorporationKind25(KOTLIN_2_5, "KT-85879"),
     NameBasedDestructuring(sinceVersion = KOTLIN_2_5, "KT-19627"),
     JsAllowExportingAnnotationClasses(sinceVersion = KOTLIN_2_5, "KT-85599"),
     JsAllowExportingStarProjection(sinceVersion = KOTLIN_2_5, "KT-83462"),
     AllowReturnsResultOfContract(sinceVersion = KOTLIN_2_5, sinceApiVersion = ApiVersion.KOTLIN_2_4, issue = "KT-85948", forcesPreReleaseBinaries = true),
+
+    CallCompletionRefinementsFor25(sinceVersion = KOTLIN_2_5, "KT-86042"),
+    UnitConversionsOnArbitraryExpressions(sinceVersion = KOTLIN_2_5, "KT-84393"),
+    InferThrowableTypeParameterToUpperBound(KOTLIN_2_5, "KT-82961"),
+
+    EagerLambdaAnalysis(sinceVersion = KOTLIN_2_5, "KT-51107") {
+        fun versionCheck() {
+            sinceVersion?.let {
+                require(CallCompletionRefinementsFor25.sinceVersion != null && CallCompletionRefinementsFor25.sinceVersion <= it)
+                require(UnitConversionsOnArbitraryExpressions.sinceVersion != null && UnitConversionsOnArbitraryExpressions.sinceVersion <= it)
+                require(InferThrowableTypeParameterToUpperBound.sinceVersion != null && InferThrowableTypeParameterToUpperBound.sinceVersion <= it)
+            }
+        }
+
+        init {
+            versionCheck()
+        }
+    },
 
     // 2.6
 
@@ -602,7 +624,7 @@ enum class LanguageFeature(
     JavaSamConversionEqualsHashCode(sinceVersion = null, forcesPreReleaseBinaries = true, issue = NO_ISSUE_SPECIFIED),
     AllowAnyAsAnActualTypeForExpectInterface(sinceVersion = null, issue = "KT-79308"),
 
-    CompanionBlocksAndExtensions(sinceVersion = null, issue = "KT-11968", forcesPreReleaseBinaries = true, forcesPreReleaseBinariesBefore = KOTLIN_2_5),
+    CompanionBlocksAndExtensions(sinceVersion = null, issue = "KT-11968", forcesPreReleaseBinaries = true, forcesPreReleaseBinariesBefore = KOTLIN_2_5, enabledInLatestLVTests = true),
     ProhibitCallableReferencesToStaticsWithTypeArgumentsOrNullMarkInLhs(sinceVersion = null, enabledInProgressiveMode = true, issue = "KT-84956") {
         fun companionBlocksVersionCheck() {
             val companionBlocks = CompanionBlocksAndExtensions
@@ -642,7 +664,7 @@ enum class LanguageFeature(
     // K1 support only. We keep it, as it's currently unclear what to do with this feature in K2
     DisableCheckingChangedProgressionsResolve(sinceVersion = null, "KT-49276"),
 
-    CollectionLiterals(sinceVersion = null, issue = "KT-80489"),
+    CollectionLiterals(sinceVersion = null, issue = "KT-80489", enabledInLatestLVTests = true),
     ProperFieldAccessGenerationForFieldAccessShadowedByKotlinProperty(sinceVersion = null, "KT-56386"),
     IrCrossModuleInlinerBeforeKlibSerialization(sinceVersion = null, sinceApiVersion = ApiVersion.KOTLIN_2_3, forcesPreReleaseBinaries = true, issue = "KT-79717"),
     UnnamedLocalVariables(sinceVersion = null, forcesPreReleaseBinaries = false, issue = "KT-74809"),
@@ -675,6 +697,10 @@ enum class LanguageFeature(
 
         if (!forcesPreReleaseBinaries && forcesPreReleaseBinariesBefore != null) {
             error("$this: forcesPreReleaseBinariesBefore is not null but forcesPreReleaseBinaries is false")
+        }
+
+        if (sinceVersion != null && enabledInLatestLVTests) {
+            error("$this: already enabled in latest language version tests, no need in '${::enabledInLatestLVTests.name} = true'")
         }
     }
 
@@ -841,20 +867,20 @@ class LanguageVersionSettingsImpl @JvmOverloads constructor(
 
     override fun toString() = buildString {
         append("Language = $languageVersion, API = $apiVersion")
-        specificFeatures.entries.sortedBy { (feature, _) -> feature.ordinal }.forEach { (feature, state) ->
+        specificFeatures.entries.sortedBy { [feature, _] -> feature.ordinal }.forEach { [feature, state] ->
             val char = when (state) {
                 LanguageFeature.State.ENABLED -> '+'
                 LanguageFeature.State.DISABLED -> '-'
             }
             append(" $char$feature")
         }
-        analysisFlags.entries.sortedBy { (flag, _) -> flag.toString() }.forEach { (flag, value) ->
+        analysisFlags.entries.sortedBy { [flag, _] -> flag.toString() }.forEach { [flag, value] ->
             append(" $flag:$value")
         }
     }
 
     override fun isPreRelease(): Boolean = languageVersion.isPreRelease() ||
-            specificFeatures.any { (feature, state) ->
+            specificFeatures.any { [feature, state] ->
                 state == LanguageFeature.State.ENABLED && feature.forcesPreReleaseBinariesIfEnabled(languageVersion)
             }
 
@@ -876,13 +902,13 @@ fun LanguageFeature.forcesPreReleaseBinariesIfEnabled(languageVersion: LanguageV
 }
 
 fun LanguageVersionSettings.getCustomizedEffectivelyEnabledLanguageFeatures(): Set<LanguageFeature> {
-    return getCustomizedLanguageFeatures().entries.mapNotNullTo(mutableSetOf()) { (feature, state) ->
+    return getCustomizedLanguageFeatures().entries.mapNotNullTo(mutableSetOf()) { [feature, state] ->
         feature.takeIf { !isEnabledByDefault(feature) && state == LanguageFeature.State.ENABLED }
     }
 }
 
 fun LanguageVersionSettings.getCustomizedEffectivelyDisabledLanguageFeatures(): Set<LanguageFeature> {
-    return getCustomizedLanguageFeatures().entries.mapNotNullTo(mutableSetOf()) { (feature, state) ->
+    return getCustomizedLanguageFeatures().entries.mapNotNullTo(mutableSetOf()) { [feature, state] ->
         feature.takeIf { isEnabledByDefault(feature) && state == LanguageFeature.State.DISABLED }
     }
 }
