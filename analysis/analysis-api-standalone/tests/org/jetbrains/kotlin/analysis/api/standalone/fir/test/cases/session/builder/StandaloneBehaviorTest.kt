@@ -231,9 +231,9 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
     }
 
     /**
-     * Tests that [KotlinDeclarationProvider.computePackageNames] returns correct package names for a KLib library module (non-JVM).
+     * Tests that `KotlinDeclarationProvider.computePackageNames` returns correct package names for a KLib library module (non-JVM).
      *
-     * KLibs are not JAR files, so the old JAR-traversal path in [computeBinaryLibraryModulePackageSet] cannot handle them and returns
+     * KLibs are not JAR files, so the old JAR-traversal path in `computeBinaryLibraryModulePackageSet` cannot handle them and returns
      * `null`. This test verifies that the declaration provider can compute packages for KLib library modules, consistent with the package
      * provider (KT-83760).
      */
@@ -253,14 +253,6 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
                 )
 
                 platform = sharedPlatform
-                addModule(
-                    buildKtSourceModule {
-                        addSourceRoot(testDataPath("packageProvider"))
-                        addRegularDependency(libraryModule)
-                        platform = sharedPlatform
-                        moduleName = "source"
-                    }
-                )
             }
         }
 
@@ -276,14 +268,15 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
     }
 
     /**
-     * Tests that [KotlinPackageProvider.doesKotlinOnlyPackageExist] and [KotlinDeclarationProvider.computePackageNames] agree on which
-     * packages exist for a KLib library module (KT-83760).
+     * Tests that every package name reported by `KotlinDeclarationProvider.computePackageNames` for a KLib library module is also known
+     * to `KotlinPackageProvider.doesKotlinOnlyPackageExist` (KT-83760).
      *
-     * Before the fix, [KotlinDeclarationProvider.computePackageNames] returned `null` for KLib modules while [KotlinPackageProvider]
-     * correctly reported their packages. This test verifies the two providers are now consistent.
+     * Before the fix, `KotlinDeclarationProvider.computePackageNames` returned `null` for KLib modules while `KotlinPackageProvider`
+     * correctly reported their packages. This test verifies that the declaration provider's package set is a subset of the package
+     * provider's after the fix.
      */
     @Test
-    fun testKlibPackageProviderAndDeclarationProviderAreConsistent() {
+    fun testKlibDeclarationProviderPackageNamesAreKnownToPackageProvider() {
         val sharedPlatform = JsPlatforms.defaultJsPlatform
 
         lateinit var libraryModule: KaLibraryModule
@@ -298,14 +291,6 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
                 )
 
                 platform = sharedPlatform
-                addModule(
-                    buildKtSourceModule {
-                        addSourceRoot(testDataPath("packageProvider"))
-                        addRegularDependency(libraryModule)
-                        platform = sharedPlatform
-                        moduleName = "source"
-                    }
-                )
             }
         }
 
@@ -346,14 +331,6 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
                 )
 
                 platform = sharedPlatform
-                addModule(
-                    buildKtSourceModule {
-                        addSourceRoot(testDataPath("packageProvider"))
-                        addRegularDependency(libraryModule)
-                        platform = sharedPlatform
-                        moduleName = "source"
-                    }
-                )
             }
         }
 
