@@ -33,7 +33,7 @@ class KotlinStandalonePackageNamesProvider(
     indexedFilesProvider: () -> Collection<KtFile>,
     libraryRoots: List<VirtualFile>,
 ) {
-    private val sourceFilesByPackage: Map<FqName, List<VirtualFile>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    private val sourceFilesByPackage: Map<FqName, List<VirtualFile>> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         buildMap<FqName, MutableList<VirtualFile>> {
             for (ktFile in indexedFilesProvider()) {
                 val virtualFile = ktFile.virtualFile ?: continue
