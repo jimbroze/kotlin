@@ -37,6 +37,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StandaloneBehaviorTest : AbstractStandaloneTest() {
@@ -327,6 +328,42 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
         val kotlinFqName = FqName("kotlin")
         assertTrue(packageProvider.doesKotlinOnlyPackageExist(kotlinFqName), "Package 'kotlin' must exist in the package provider")
         assertTrue("kotlin" in packageNamesFromDeclarationProvider, "Package 'kotlin' must be in computePackageNames()")
+    }
+
+    @Test
+    fun testJarLibraryModuleDeclarationProviderComputePackageNamesReturnsNull() {
+        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
+
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.runtimeJarForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib"
+                    }
+                )
+
+                platform = sharedPlatform
+                addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(libraryModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
+            }
+        }
+
+        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
+        val packageNames = declarationProvider.computePackageNames()
+
+        assertNull(
+            packageNames,
+            "computePackageNames() must return null for a JAR-based library module: JAR packages are handled through platform-specific mechanisms, not the standalone package names provider",
+        )
     }
 
     private class PackageProviderTestContext(
