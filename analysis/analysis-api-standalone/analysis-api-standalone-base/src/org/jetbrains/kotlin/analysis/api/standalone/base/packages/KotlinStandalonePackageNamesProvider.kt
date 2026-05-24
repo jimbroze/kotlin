@@ -19,9 +19,6 @@ import java.nio.file.Path
 import kotlin.io.path.extension
 
 /**
- * A unified source of package names shared between [KotlinStandalonePackageProvider] and
- * [org.jetbrains.kotlin.analysis.api.standalone.base.declarations.KotlinStandaloneDeclarationProvider].
- *
  * The provider computes packages from indexed [KtFile]s (sources and binary stubs) and KLib library roots. Sharing this computation
  * ensures both the package provider and the declaration provider report consistent package sets (KT-83760).
  *
@@ -43,9 +40,8 @@ class KotlinStandalonePackageNamesProvider(
     }
 
     /**
-     * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file that contains it. Only KLib roots are included;
-     * JAR roots are omitted because their packages are handled separately by
-     * `KotlinStandaloneDeclarationProvider.computeBinaryLibraryModulePackageSet`.
+     * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file that contains it.
+     * Only KLib roots are included; JAR roots are omitted
      */
     private val klibFiles: Map<VirtualFile, Path> = buildMap {
         for (libraryRoot in libraryRoots) {
