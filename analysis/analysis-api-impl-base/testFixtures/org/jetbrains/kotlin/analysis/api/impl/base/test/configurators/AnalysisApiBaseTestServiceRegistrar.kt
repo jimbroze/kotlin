@@ -147,7 +147,7 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
             registerService(KotlinDeclarationProviderMerger::class.java, KotlinStandaloneDeclarationProviderMerger(project))
 
             val packageNamesProvider = KotlinStandalonePackageNamesProvider(
-                indexedFilesProvider = { testKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles() },
+                declarationProviderFactory = declarationProviderFactory,
                 libraryRoots = sharedBinaryRoots,
             )
             registerService(KotlinStandalonePackageNamesProvider::class.java, packageNamesProvider)

@@ -215,6 +215,45 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         assertTrue("kotlin" in packageNamesFromDeclarationProvider, "Package 'kotlin' must be in computePackageNames()")
     }
 
+    /**
+     * Tests that every package name reported by `KotlinDeclarationProvider.computePackageNames` for a source module is also known to
+     * `KotlinPackageProvider.doesKotlinOnlyPackageExist`, i.e. both providers are backed by the same centralized package name
+     * computation (KT-83760).
+     */
+    @Test
+    fun testSourceDeclarationProviderPackageNamesAreKnownToPackageProvider() {
+        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
+
+        lateinit var sourceModule: KaSourceModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                platform = sharedPlatform
+                sourceModule = addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
+            }
+        }
+
+        val packageProvider = sourceModule.project.createPackageProvider(sourceModule.contentScope)
+        val declarationProvider = sourceModule.project.createDeclarationProvider(sourceModule.contentScope, sourceModule)
+
+        val packageNames = declarationProvider.computePackageNames()
+        assertNotNull(packageNames, "computePackageNames() must return a non-null set for a source module")
+        assertTrue("foo" in packageNames, "Package 'foo' must be in computePackageNames() for the test sources")
+
+        for (packageName in packageNames) {
+            val fqName = FqName(packageName)
+            assertTrue(
+                packageProvider.doesKotlinOnlyPackageExist(fqName),
+                "Package '$packageName' is in computePackageNames() but doesKotlinOnlyPackageExist() returns false for it",
+            )
+        }
+    }
+
     @Test
     fun testJarLibraryModuleDeclarationProviderComputePackageNamesReturnsNull() {
         val sharedPlatform = JvmPlatforms.defaultJvmPlatform
@@ -239,7 +278,7 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
 
         assertNull(
             packageNames,
-            "computePackageNames() must return null for a JAR-based library module: JAR packages are handled through platform-specific mechanisms, not the standalone package names provider",
+            "computePackageNames() must return null for a JAR-based library module: Kotlin package names for non-indexed JARs are not yet supported by the standalone package names provider (to be addressed in a follow-up to KT-83760)",
         )
     }
 

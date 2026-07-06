@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2025 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2026 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -11,28 +11,35 @@ import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.analysis.api.standalone.base.declarations.KotlinStandaloneDeclarationProviderFactory
 import org.jetbrains.kotlin.library.KlibConstants.KLIB_FILE_EXTENSION
 import org.jetbrains.kotlin.library.components.metadata
 import org.jetbrains.kotlin.library.loader.KlibLoader
 import org.jetbrains.kotlin.library.metadata.parseModuleHeader
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtDeclaration
 import java.nio.file.Path
 import kotlin.io.path.extension
 
 /**
- * A unified source of package names shared between [KotlinStandalonePackageProvider] and
- * [org.jetbrains.kotlin.analysis.api.standalone.base.declarations.KotlinStandaloneDeclarationProvider].
+ * A unified source of Kotlin package names shared between [KotlinStandalonePackageProvider] and
+ * [org.jetbrains.kotlin.analysis.api.standalone.base.declarations.KotlinStandaloneDeclarationProvider], so that both providers report
+ * consistent package sets (KT-83760).
  *
- * The provider computes packages from indexed [KtFile]s (sources and binary stubs) and KLib library roots. Sharing this computation
- * ensures both the package provider and the declaration provider report consistent package sets (KT-83760).
+ * Package names are computed with two strategies:
  *
- * [getPackageNamesInScope] returns `null` rather than an empty set when no tracked files or KLib roots intersect with the given scope.
- * This allows callers to distinguish "no packages in this scope" (empty set) from "this scope is not tracked by this provider" (null),
- * which is important for JAR-based library modules that are handled through separate platform-specific mechanisms.
+ * - From the declaration index of [declarationProviderFactory], which covers source files and binary libraries when they are indexed as
+ *   stubs (see [org.jetbrains.kotlin.analysis.api.platform.KotlinDeserializedDeclarationsOrigin.STUBS]).
+ * - From KLib metadata for KLib library roots.
+ *
+ * Kotlin classes in non-indexed JARs are currently not covered: in production Standalone mode, libraries are not indexed
+ * (see [org.jetbrains.kotlin.analysis.api.platform.KotlinDeserializedDeclarationsOrigin.BINARIES]), and computing precise Kotlin-only
+ * package names for a JAR requires distinguishing Kotlin class files from other JVM class files, which is expensive without an index.
+ * Java packages in JARs are still found through `KotlinPackageProviderBase.doesPlatformSpecificPackageExist`. Kotlin packages in
+ * non-indexed JARs should be supported in a follow-up to KT-83760.
  */
 class KotlinStandalonePackageNamesProvider(
-    indexedFilesProvider: () -> Collection<KtFile>,
+    private val declarationProviderFactory: KotlinStandaloneDeclarationProviderFactory,
     libraryRoots: List<VirtualFile>,
 ) {
     companion object {
@@ -40,24 +47,14 @@ class KotlinStandalonePackageNamesProvider(
             project.getService(KotlinStandalonePackageNamesProvider::class.java)
     }
 
-    private val sourceFilesByPackage: Map<FqName, List<VirtualFile>> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        buildMap<FqName, MutableList<VirtualFile>> {
-            for (ktFile in indexedFilesProvider()) {
-                val virtualFile = ktFile.virtualFile ?: continue
-                getOrPut(ktFile.packageFqName) { mutableListOf() }.add(virtualFile)
-            }
-        }
-    }
-
     /**
-     * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file that contains it. Only KLib roots are included;
-     * JAR roots are omitted because their packages are handled separately by
-     * `KotlinStandaloneDeclarationProvider.computeBinaryLibraryModulePackageSet`.
+     * A mapping from a KLib library root [VirtualFile] to the [Path] of the `.klib` file or unpacked KLib directory that contains it.
+     * JAR roots are omitted (see the class documentation).
      */
     private val klibFiles: Map<VirtualFile, Path> = buildMap {
         for (libraryRoot in libraryRoots) {
             if (libraryRoot.fileSystem.protocol == StandardFileSystems.JAR_PROTOCOL) {
-                // Root entry in the Klib archive
+                // Root entry in the KLib archive
                 val libraryFile = runCatching { VfsUtilCore.getVirtualFileForJar(libraryRoot)?.toNioPath() }.getOrNull() ?: continue
                 if (libraryFile.extension.lowercase() == KLIB_FILE_EXTENSION) {
                     put(libraryRoot, libraryFile)
@@ -86,29 +83,46 @@ class KotlinStandalonePackageNamesProvider(
         }
 
     /**
-     * Returns the set of package [FqName]s present in [scope], or `null` if no tracked files or KLib roots intersect with [scope].
-     *
-     * A `null` result means this provider has no information about [scope] (e.g., for JAR-based library modules). An empty set means the
-     * provider knows about [scope] but finds no packages in it.
+     * Computes the package names of all indexed declarations contained in [scope]. This covers source files and, when binary libraries
+     * are indexed as stubs, library declarations.
      */
-    fun getPackageNamesInScope(scope: GlobalSearchScope): Set<FqName>? {
-        val packages = mutableSetOf<FqName>()
-        var foundTrackedEntity = false
+    fun computePackageNamesFromIndex(scope: GlobalSearchScope): Set<FqName> = buildSet {
+        addPackageNamesInScope(declarationProviderFactory.index.classLikeDeclarationsByPackage, scope)
+        addPackageNamesInScope(declarationProviderFactory.index.topLevelCallablesByPackage, scope)
+    }
 
-        for ([fqName, virtualFiles] in sourceFilesByPackage) {
-            if (virtualFiles.any { scope.contains(it) }) {
-                foundTrackedEntity = true
-                packages.add(fqName)
+    private fun <T : KtDeclaration> MutableSet<FqName>.addPackageNamesInScope(map: Map<FqName, Set<T>>, scope: GlobalSearchScope) {
+        map.forEach { [fqName, declarations] ->
+            if (declarations.any { it.containingKtFile.virtualFile in scope }) {
+                add(fqName)
             }
         }
+    }
+
+    /**
+     * Computes the package names of all KLib library roots contained in [scope], or `null` if no KLib root is contained in [scope].
+     *
+     * The `null` result allows callers to distinguish "no KLibs are tracked in this scope" from "the KLibs in this scope contain no
+     * packages", e.g. to fall back to another computation for JAR-based library modules.
+     */
+    fun computeKlibPackageNames(scope: GlobalSearchScope): Set<FqName>? {
+        var foundKlibRoot = false
+        val packages = mutableSetOf<FqName>()
 
         for ([libraryRoot, libraryFile] in klibFiles) {
             if (scope.contains(libraryRoot)) {
-                foundTrackedEntity = true
+                foundKlibRoot = true
                 packages.addAll(klibPackages[libraryFile] ?: emptyList())
             }
         }
 
-        return if (foundTrackedEntity) packages else null
+        return if (foundKlibRoot) packages else null
     }
+
+    /**
+     * Returns all Kotlin package names known to this provider in [scope]: the packages of indexed declarations and of KLib library
+     * roots.
+     */
+    fun getPackageNamesInScope(scope: GlobalSearchScope): Set<FqName> =
+        computePackageNamesFromIndex(scope) + (computeKlibPackageNames(scope) ?: emptySet())
 }

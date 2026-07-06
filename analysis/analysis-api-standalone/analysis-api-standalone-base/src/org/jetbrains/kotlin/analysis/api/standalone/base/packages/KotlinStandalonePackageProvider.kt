@@ -43,8 +43,7 @@ class KotlinStandalonePackageProviderFactory(
     private val project: Project,
 ) : KotlinCachingPackageProviderFactory(project) {
     override fun createNewPackageProvider(searchScope: GlobalSearchScope): KotlinPackageProvider {
-        val matchingPackageNames =
-            KotlinStandalonePackageNamesProvider.getInstance(project).getPackageNamesInScope(searchScope) ?: emptySet()
+        val matchingPackageNames = KotlinStandalonePackageNamesProvider.getInstance(project).getPackageNamesInScope(searchScope)
         return KotlinStandalonePackageProvider(project, searchScope, matchingPackageNames)
     }
 }

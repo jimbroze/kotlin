@@ -168,7 +168,7 @@ public class StandaloneAnalysisAPISessionBuilder(
             registerService(KotlinDeclarationProviderMerger::class.java, KotlinStandaloneDeclarationProviderMerger(this))
 
             val packageNamesProvider = KotlinStandalonePackageNamesProvider(
-                indexedFilesProvider = { sourceKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles() },
+                declarationProviderFactory = declarationProviderFactory,
                 libraryRoots = libraryRoots,
             )
             registerService(KotlinStandalonePackageNamesProvider::class.java, packageNamesProvider)
