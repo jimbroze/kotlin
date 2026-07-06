@@ -129,16 +129,10 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
             val shouldBuildStubsForBinaryLibraries =
                 testServices.libraryIndexingConfiguration.binaryLibraryIndexingMode == AnalysisApiBinaryLibraryIndexingMode.INDEX_STUBS
 
-            lateinit var declarationProviderFactory: KotlinStandaloneDeclarationProviderFactory
-            val packageNamesProvider = KotlinStandalonePackageNamesProvider(
-                indexedFilesProvider = { testKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles() },
-                libraryRoots = sharedBinaryRoots,
-            )
-            declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
+            val declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
                 project,
                 testServices.environmentManager.getApplicationEnvironment(),
                 testKtFiles,
-                packageNamesProvider,
                 binaryRoots = mainBinaryRoots + mainBinaryVirtualFiles,
                 sharedBinaryRoots = sharedBinaryRoots + sharedBinaryVirtualFiles,
                 skipBuiltins = testServices.moduleStructure.allDirectives.contains(NO_RUNTIME),
@@ -152,9 +146,15 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
             )
             registerService(KotlinDeclarationProviderMerger::class.java, KotlinStandaloneDeclarationProviderMerger(project))
 
+            val packageNamesProvider = KotlinStandalonePackageNamesProvider(
+                indexedFilesProvider = { testKtFiles + declarationProviderFactory.getAdditionalCreatedKtFiles() },
+                libraryRoots = sharedBinaryRoots,
+            )
+            registerService(KotlinStandalonePackageNamesProvider::class.java, packageNamesProvider)
+
             registerService(
                 KotlinPackageProviderFactory::class.java,
-                KotlinStandalonePackageProviderFactory(project, packageNamesProvider),
+                KotlinStandalonePackageProviderFactory(project),
             )
             registerService(KotlinPackageProviderMerger::class.java, KotlinStandalonePackageProviderMerger(project))
         }

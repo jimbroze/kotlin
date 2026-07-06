@@ -6,6 +6,8 @@
 package org.jetbrains.kotlin.analysis.api.standalone.base.packages
 
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.GlobalSearchScope
@@ -33,6 +35,11 @@ class KotlinStandalonePackageNamesProvider(
     indexedFilesProvider: () -> Collection<KtFile>,
     libraryRoots: List<VirtualFile>,
 ) {
+    companion object {
+        fun getInstance(project: Project): KotlinStandalonePackageNamesProvider =
+            project.getService(KotlinStandalonePackageNamesProvider::class.java)
+    }
+
     private val sourceFilesByPackage: Map<FqName, List<VirtualFile>> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         buildMap<FqName, MutableList<VirtualFile>> {
             for (ktFile in indexedFilesProvider()) {

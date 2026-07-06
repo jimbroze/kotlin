@@ -33,7 +33,6 @@ class KotlinStandaloneDeclarationProvider internal constructor(
     private val contextualModule: KaModule?,
     private val environment: CoreApplicationEnvironment,
     private val shouldComputeBinaryLibraryPackageSets: Boolean,
-    private val packageNamesProvider: KotlinStandalonePackageNamesProvider,
 ) : KotlinDeclarationProvider {
     private val KtElement.inScope: Boolean
         get() = containingKtFile.virtualFile in scope
@@ -98,7 +97,8 @@ class KotlinStandaloneDeclarationProvider internal constructor(
                 if (contextualModule.canComputePackageSetFromIndex) {
                     computePackageSetFromIndex()
                 } else {
-                    packageNamesProvider.getPackageNamesInScope(scope)?.mapTo(mutableSetOf()) { it.asString() }
+                    KotlinStandalonePackageNamesProvider.getInstance(contextualModule.project).getPackageNamesInScope(scope)
+                        ?.mapTo(mutableSetOf()) { it.asString() }
                         ?: computeBinaryLibraryModulePackageSet(contextualModule)
                 }
 
@@ -207,7 +207,6 @@ class KotlinStandaloneDeclarationProviderFactory(
     private val project: Project,
     private val environment: CoreApplicationEnvironment,
     sourceKtFiles: Collection<KtFile>,
-    private val packageNamesProvider: KotlinStandalonePackageNamesProvider,
     binaryRoots: List<VirtualFile> = emptyList(),
     sharedBinaryRoots: List<VirtualFile> = emptyList(),
     skipBuiltins: Boolean = false,
@@ -249,7 +248,6 @@ class KotlinStandaloneDeclarationProviderFactory(
             contextualModule,
             environment,
             shouldComputeBinaryLibraryPackageSets,
-            packageNamesProvider,
         )
     }
 

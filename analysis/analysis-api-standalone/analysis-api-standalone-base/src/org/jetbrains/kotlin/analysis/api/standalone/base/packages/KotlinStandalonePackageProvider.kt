@@ -6,9 +6,6 @@
 package org.jetbrains.kotlin.analysis.api.standalone.base.packages
 
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.StandardFileSystems
-import com.intellij.openapi.vfs.VfsUtilCore
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analysis.api.platform.mergeSpecificProviders
 import org.jetbrains.kotlin.analysis.api.platform.packages.*
@@ -18,7 +15,7 @@ import org.jetbrains.kotlin.name.Name
 class KotlinStandalonePackageProvider(
     project: Project,
     internal val scope: GlobalSearchScope,
-    matchingPackageNames: Set<FqName>
+    matchingPackageNames: Set<FqName>,
 ) : KotlinPackageProviderBase(project, scope) {
     private val kotlinPackageToSubPackages: Map<FqName, Set<Name>> = run {
         val packages: MutableMap<FqName, MutableSet<Name>> = mutableMapOf() // the explicit type is here to workaround KTIJ-21172
@@ -44,10 +41,10 @@ class KotlinStandalonePackageProvider(
 
 class KotlinStandalonePackageProviderFactory(
     private val project: Project,
-    private val packageNamesProvider: KotlinStandalonePackageNamesProvider,
 ) : KotlinCachingPackageProviderFactory(project) {
     override fun createNewPackageProvider(searchScope: GlobalSearchScope): KotlinPackageProvider {
-        val matchingPackageNames = packageNamesProvider.getPackageNamesInScope(searchScope) ?: emptySet()
+        val matchingPackageNames =
+            KotlinStandalonePackageNamesProvider.getInstance(project).getPackageNamesInScope(searchScope) ?: emptySet()
         return KotlinStandalonePackageProvider(project, searchScope, matchingPackageNames)
     }
 }
