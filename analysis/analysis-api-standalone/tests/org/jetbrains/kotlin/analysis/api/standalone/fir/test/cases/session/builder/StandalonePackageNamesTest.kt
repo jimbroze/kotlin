@@ -1,0 +1,300 @@
+/*
+ * Copyright 2010-2026 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
+ */
+
+package org.jetbrains.kotlin.analysis.api.standalone.fir.test.cases.session.builder
+
+import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.platform.declarations.createDeclarationProvider
+import org.jetbrains.kotlin.analysis.api.platform.packages.KotlinPackageProvider
+import org.jetbrains.kotlin.analysis.api.platform.packages.createPackageProvider
+import org.jetbrains.kotlin.analysis.api.projectStructure.KaLibraryModule
+import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
+import org.jetbrains.kotlin.analysis.api.projectStructure.KaSourceModule
+import org.jetbrains.kotlin.analysis.api.standalone.buildStandaloneAnalysisAPISession
+import org.jetbrains.kotlin.analysis.api.standalone.fir.test.AbstractStandaloneTest
+import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryModule
+import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
+import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
+import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.platform.TargetPlatform
+import org.jetbrains.kotlin.platform.js.JsPlatforms
+import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
+import org.junit.jupiter.api.Test
+import java.nio.file.Paths
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class StandalonePackageNamesTest : AbstractStandaloneTest() {
+    override val suiteName: String
+        get() = "behavior"
+
+    @Test
+    fun testJvmPackageProvider() {
+        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
+
+        lateinit var sourceModule: KaSourceModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                val sdkModule = addModule(
+                    buildKtSdkModule {
+                        addBinaryRootsFromJdkHome(Paths.get(System.getProperty("java.home")), isJre = true)
+                        addBinaryRootsFromJdkHome(Paths.get(System.getProperty("java.home")), isJre = false)
+                        platform = sharedPlatform
+                        libraryName = "JDK"
+                    }
+                )
+
+                val stdlibModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.runtimeJarForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib"
+                    }
+                )
+
+                platform = sharedPlatform
+                sourceModule = addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(sdkModule)
+                        addRegularDependency(stdlibModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
+            }
+        }
+
+        testPackageProvider(sourceModule) {
+            checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false)
+            checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false)
+            checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = true)
+            checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = true)
+            checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = true)
+            checkPackageExistence("java.lang", isKotlinOnly = false, isPlatform = true)
+            checkPackageExistence("java.io", isKotlinOnly = false, isPlatform = true)
+
+            checkSubpackages("foo", emptyList())
+            checkSubpackages("bar", emptyList())
+            checkSubpackages("kotlin", listOf("collections", "jvm", "js"))
+            checkSubpackages("kotlin.collections", listOf("unsigned", "jdk8"))
+            checkSubpackages("java", listOf("lang", "io"))
+        }
+    }
+
+    @Test
+    fun testJsPackageProvider() {
+        val sharedPlatform = JsPlatforms.defaultJsPlatform
+
+        lateinit var sourceModule: KaSourceModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                val stdlibModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.stdlibJsForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib"
+                    }
+                )
+
+                platform = sharedPlatform
+                sourceModule = addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(stdlibModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
+            }
+        }
+
+        testPackageProvider(sourceModule) {
+            checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false)
+            checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false)
+            checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = false)
+            checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = false)
+            checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = false)
+            checkPackageExistence("java.lang", isKotlinOnly = false, isPlatform = false)
+            checkPackageExistence("java.io", isKotlinOnly = false, isPlatform = false)
+
+            checkSubpackages("foo", emptyList())
+            checkSubpackages("bar", emptyList())
+            checkSubpackages("kotlin", listOf("collections", "jvm", "js"))
+        }
+    }
+
+    /**
+     * Tests that `KotlinDeclarationProvider.computePackageNames` returns correct package names for a KLib library module (non-JVM).
+     *
+     * This test verifies that the declaration provider can compute packages for KLib library modules, consistent with the package
+     * provider (KT-83760).
+     */
+    @Test
+    fun testKlibDeclarationProviderPackageNames() {
+        val sharedPlatform = JsPlatforms.defaultJsPlatform
+
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.stdlibJsForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib-js"
+                    }
+                )
+
+                platform = sharedPlatform
+            }
+        }
+
+        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
+        val packageNames = declarationProvider.computePackageNames()
+
+        assertNotNull(packageNames, "computePackageNames() must return a non-null set for a KLib library module (KT-83760)")
+        assertTrue("kotlin" in packageNames, "Package 'kotlin' must be in computePackageNames() for the JS stdlib KLib")
+        assertTrue(
+            "kotlin.collections" in packageNames,
+            "Package 'kotlin.collections' must be in computePackageNames() for the JS stdlib KLib"
+        )
+    }
+
+    /**
+     * Tests that every package name reported by `KotlinDeclarationProvider.computePackageNames` for a KLib library module is also known
+     * to `KotlinPackageProvider.doesKotlinOnlyPackageExist` (KT-83760).
+     *
+     * Before the fix, `KotlinDeclarationProvider.computePackageNames` returned `null` for KLib modules while `KotlinPackageProvider`
+     * correctly reported their packages. This test verifies that the declaration provider's package set is a subset of the package
+     * provider's after the fix.
+     */
+    @Test
+    fun testKlibDeclarationProviderPackageNamesAreKnownToPackageProvider() {
+        val sharedPlatform = JsPlatforms.defaultJsPlatform
+
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.stdlibJsForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib-js"
+                    }
+                )
+
+                platform = sharedPlatform
+            }
+        }
+
+        val packageProvider = libraryModule.project.createPackageProvider(libraryModule.contentScope)
+        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
+
+        val packageNamesFromDeclarationProvider = declarationProvider.computePackageNames()
+        assertNotNull(packageNamesFromDeclarationProvider, "computePackageNames() must return non-null for a KLib library module")
+
+        // Every package reported by computePackageNames() must also be known to the package provider
+        for (packageName in packageNamesFromDeclarationProvider) {
+            val fqName = FqName(packageName)
+            assertTrue(
+                packageProvider.doesKotlinOnlyPackageExist(fqName),
+                "Package '$packageName' is in computePackageNames() but doesKotlinOnlyPackageExist() returns false for it",
+            )
+        }
+
+        // Spot-check: a known stdlib package must be in both providers
+        val kotlinFqName = FqName("kotlin")
+        assertTrue(packageProvider.doesKotlinOnlyPackageExist(kotlinFqName), "Package 'kotlin' must exist in the package provider")
+        assertTrue("kotlin" in packageNamesFromDeclarationProvider, "Package 'kotlin' must be in computePackageNames()")
+    }
+
+    @Test
+    fun testJarLibraryModuleDeclarationProviderComputePackageNamesReturnsNull() {
+        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
+
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.runtimeJarForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "stdlib"
+                    }
+                )
+
+                platform = sharedPlatform
+            }
+        }
+
+        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
+        val packageNames = declarationProvider.computePackageNames()
+
+        assertNull(
+            packageNames,
+            "computePackageNames() must return null for a JAR-based library module: JAR packages are handled through platform-specific mechanisms, not the standalone package names provider",
+        )
+    }
+
+    private class PackageProviderTestContext(
+        private val session: KaSession,
+        private val packageProvider: KotlinPackageProvider,
+        private val targetPlatform: TargetPlatform,
+    ) {
+        fun checkPackageExistence(name: String, isKotlinOnly: Boolean, isPlatform: Boolean) {
+            fun check(expected: Boolean, message: String, block: () -> Boolean) {
+                if (expected) {
+                    assertTrue(block(), message)
+                } else {
+                    assertFalse(block(), message.replace("must", "must not"))
+                }
+            }
+
+            val packageFqName = FqName(name)
+            check(isKotlinOnly || isPlatform, "Package '$packageFqName' must exist") {
+                packageProvider.doesPackageExist(packageFqName, targetPlatform)
+            }
+            check(isKotlinOnly || isPlatform, "Package '$packageFqName' must be visible through 'KaSession.findPackage()'") {
+                with(session) { findPackage(packageFqName) != null }
+            }
+            check(isKotlinOnly, "Kotlin-only package '$packageFqName' must exist") {
+                packageProvider.doesKotlinOnlyPackageExist(packageFqName)
+            }
+            check(isPlatform, "Platform-specific package '$packageFqName' must exist") {
+                packageProvider.doesPlatformSpecificPackageExist(packageFqName, targetPlatform)
+            }
+        }
+
+        fun checkSubpackages(name: String, expectedInside: List<String>) {
+            val packageFqName = FqName(name)
+            val actualSubpackages = packageProvider.getSubpackageNames(packageFqName, targetPlatform)
+                .mapTo(HashSet()) { it.asString() }
+
+            if (expectedInside.isEmpty()) {
+                assertEquals(emptySet(), actualSubpackages, "Subpackages of '$packageFqName' must be empty")
+            } else {
+                for (expectedSubpackage in expectedInside) {
+                    val isInside = expectedSubpackage in actualSubpackages
+                    assertTrue(isInside, "Subpackage '$name.$expectedSubpackage' must exist")
+                }
+            }
+        }
+    }
+
+    private fun testPackageProvider(module: KaModule, block: context(KaSession) PackageProviderTestContext.() -> Unit) {
+        val targetPlatform = module.targetPlatform
+
+        analyze(module) {
+            val packageProvider = module.project.createPackageProvider(analysisScope)
+            val packageProviderTestContext = PackageProviderTestContext(useSiteSession, packageProvider, targetPlatform)
+            block(packageProviderTestContext)
+        }
+    }
+}
