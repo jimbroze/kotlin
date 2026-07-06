@@ -315,8 +315,7 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
     /**
      * Tests that `KotlinDeclarationProvider.computePackageNames` returns correct package names for a KLib library module (non-JVM).
      *
-     * KLibs are not JAR files, so the old JAR-traversal path in `computeBinaryLibraryModulePackageSet` cannot handle them and returns
-     * `null`. This test verifies that the declaration provider can compute packages for KLib library modules, consistent with the package
+     * This test verifies that the declaration provider can compute packages for KLib library modules, consistent with the package
      * provider (KT-83760).
      */
     @Test
