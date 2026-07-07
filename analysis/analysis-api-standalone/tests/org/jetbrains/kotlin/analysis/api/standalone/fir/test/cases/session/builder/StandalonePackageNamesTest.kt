@@ -40,11 +40,9 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         val sharedPlatform = JvmPlatforms.defaultJvmPlatform
 
         lateinit var sourceModule: KaSourceModule
-        lateinit var sdkModule: KaLibraryModule
-        lateinit var stdlibModule: KaLibraryModule
         buildStandaloneAnalysisAPISession(disposable) {
             buildKtModuleProvider {
-                sdkModule = addModule(
+                val sdkModule = addModule(
                     buildKtSdkModule {
                         addBinaryRootsFromJdkHome(Paths.get(System.getProperty("java.home")), isJre = true)
                         addBinaryRootsFromJdkHome(Paths.get(System.getProperty("java.home")), isJre = false)
@@ -53,11 +51,19 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
                     }
                 )
 
-                stdlibModule = addModule(
+                val stdlibModule = addModule(
                     buildKtLibraryModule {
                         addBinaryRoot(ForTestCompileRuntime.runtimeJarForTests().toPath())
                         platform = sharedPlatform
                         libraryName = "stdlib"
+                    }
+                )
+
+                val kotlinTestModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(ForTestCompileRuntime.kotlinTestJarForTests().toPath())
+                        platform = sharedPlatform
+                        libraryName = "kotlin-test"
                     }
                 )
 
@@ -67,6 +73,7 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
                         addSourceRoot(testDataPath("packageProvider"))
                         addRegularDependency(sdkModule)
                         addRegularDependency(stdlibModule)
+                        addRegularDependency(kotlinTestModule)
                         platform = sharedPlatform
                         moduleName = "source"
                     }
@@ -77,11 +84,15 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         testPackageProvider(sourceModule) {
             checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
             checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false, declarationProviderModule = sourceModule)
-            checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = true, declarationProviderModule = stdlibModule)
-            checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = true, declarationProviderModule = stdlibModule)
-            checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = true, declarationProviderModule = stdlibModule)
-            checkPackageExistence("java.lang", isKotlinOnly = false, isPlatform = true, declarationProviderModule = sdkModule)
-            checkPackageExistence("java.io", isKotlinOnly = false, isPlatform = true, declarationProviderModule = sdkModule)
+            checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = true)
+            checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = true)
+            checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = true)
+            // `kotlin.test` comes from a non-stdlib JAR that contains only Kotlin classes. The standalone package names provider cannot
+            // yet distinguish Kotlin packages in non-indexed JARs, so the package is only visible as a platform package (to be addressed
+            // in a follow-up to KT-83760).
+            checkPackageExistence("kotlin.test", isKotlinOnly = false, isPlatform = true)
+            checkPackageExistence("java.lang", isKotlinOnly = false, isPlatform = true)
+            checkPackageExistence("java.io", isKotlinOnly = false, isPlatform = true)
 
             checkSubpackages("foo", emptyList())
             checkSubpackages("bar", emptyList())
@@ -141,11 +152,8 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
 
     /**
      * Tests that every package name reported by `KotlinDeclarationProvider.computePackageNames` for a KLib library module is also known
-     * to `KotlinPackageProvider.doesKotlinOnlyPackageExist` (KT-83760).
-     *
-     * Before the fix, `KotlinDeclarationProvider.computePackageNames` returned `null` for KLib modules while `KotlinPackageProvider`
-     * correctly reported their packages. This test verifies that the declaration provider's package set is a subset of the package
-     * provider's after the fix.
+     * to `KotlinPackageProvider.doesKotlinOnlyPackageExist`, i.e. the declaration provider's package set is a subset of the package
+     * provider's, consistent with the shared package name computation (KT-83760).
      */
     @Test
     fun testKlibDeclarationProviderPackageNamesAreKnownToPackageProvider() {
@@ -253,7 +261,6 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
             "computePackageNames() must return null for a JAR-based library module: Kotlin package names for non-indexed JARs are not yet supported by the standalone package names provider (to be addressed in a follow-up to KT-83760)",
         )
     }
-
 }
 
 internal class PackageProviderTestContext(
@@ -291,7 +298,8 @@ internal class PackageProviderTestContext(
 
         declarationProviderModule?.let { module ->
             val declarationProvider = module.project.createDeclarationProvider(module.contentScope, module)
-            val packageNames = declarationProvider.computePackageNames() ?: return@let
+            val packageNames = declarationProvider.computePackageNames()
+            assertNotNull(packageNames, "computePackageNames() must return a non-null set for module '$module'")
             check(
                 isKotlinOnly,
                 "Kotlin-only package '$packageFqName' must be reported by computePackageNames() for module '$module'",
