@@ -17,7 +17,7 @@ import org.jetbrains.kotlin.library.components.metadata
 import org.jetbrains.kotlin.library.loader.KlibLoader
 import org.jetbrains.kotlin.library.metadata.parseModuleHeader
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.psi.KtDeclaration
+import org.jetbrains.kotlin.psi.KtElement
 import java.nio.file.Path
 import kotlin.io.path.extension
 
@@ -83,17 +83,21 @@ class KotlinStandalonePackageNamesProvider(
         }
 
     /**
-     * Computes the package names of all indexed declarations contained in [scope]. This covers source files and, when binary libraries
-     * are indexed as stubs, library declarations.
+     * Computes the package names of all indexed files and declarations contained in [scope]. This covers source files and, when binary
+     * libraries are indexed as stubs, library declarations.
+     *
+     * The packages of indexed files are included even when a file contains no declarations, so that every package mentioned in a package
+     * directive exists (consistent with the IDE, where packages are backed by a file-based index).
      */
     fun computePackageNamesFromIndex(scope: GlobalSearchScope): Set<FqName> = buildSet {
+        addPackageNamesInScope(declarationProviderFactory.index.filesByPackage, scope)
         addPackageNamesInScope(declarationProviderFactory.index.classLikeDeclarationsByPackage, scope)
         addPackageNamesInScope(declarationProviderFactory.index.topLevelCallablesByPackage, scope)
     }
 
-    private fun <T : KtDeclaration> MutableSet<FqName>.addPackageNamesInScope(map: Map<FqName, Set<T>>, scope: GlobalSearchScope) {
-        map.forEach { [fqName, declarations] ->
-            if (declarations.any { it.containingKtFile.virtualFile in scope }) {
+    private fun <T : KtElement> MutableSet<FqName>.addPackageNamesInScope(map: Map<FqName, Set<T>>, scope: GlobalSearchScope) {
+        map.forEach { [fqName, elements] ->
+            if (elements.any { it.containingKtFile.virtualFile in scope }) {
                 add(fqName)
             }
         }

@@ -71,6 +71,7 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
                 sourceModule = addModule(
                     buildKtSourceModule {
                         addSourceRoot(testDataPath("packageProvider"))
+                        addSourceRoot(testDataPath("declarationlessPackage"))
                         addRegularDependency(sdkModule)
                         addRegularDependency(stdlibModule)
                         addRegularDependency(kotlinTestModule)
@@ -84,6 +85,8 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         testPackageProvider(sourceModule) {
             checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
             checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false, declarationProviderModule = sourceModule)
+            // The package of a file without declarations must still exist (KT-83760).
+            checkPackageExistence("declarationless", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
             checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = true)
             checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = true)
             checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = true)
@@ -122,6 +125,7 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
                 sourceModule = addModule(
                     buildKtSourceModule {
                         addSourceRoot(testDataPath("packageProvider"))
+                        addSourceRoot(testDataPath("declarationlessPackage"))
                         addRegularDependency(stdlibModule)
                         platform = sharedPlatform
                         moduleName = "source"
@@ -133,6 +137,8 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         testPackageProvider(sourceModule) {
             checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
             checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false, declarationProviderModule = sourceModule)
+            // The package of a file without declarations must still exist (KT-83760).
+            checkPackageExistence("declarationless", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
             checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = false, declarationProviderModule = stdlibModule)
             checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = false, declarationProviderModule = stdlibModule)
             checkPackageExistence(
