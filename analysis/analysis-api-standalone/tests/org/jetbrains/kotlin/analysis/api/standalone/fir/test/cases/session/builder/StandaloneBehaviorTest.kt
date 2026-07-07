@@ -6,12 +6,9 @@
 package org.jetbrains.kotlin.analysis.api.standalone.fir.test.cases.session.builder
 
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
-import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
-import org.jetbrains.kotlin.analysis.api.platform.packages.KotlinPackageProvider
-import org.jetbrains.kotlin.analysis.api.platform.packages.createPackageProvider
-import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
+import org.jetbrains.kotlin.analysis.api.projectStructure.KaLibraryModule
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaSourceModule
 import org.jetbrains.kotlin.analysis.api.standalone.buildStandaloneAnalysisAPISession
 import org.jetbrains.kotlin.analysis.api.standalone.fir.test.AbstractStandaloneTest
@@ -23,7 +20,6 @@ import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.StandardClassIds
-import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.js.JsPlatforms
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.KtClass
@@ -37,9 +33,7 @@ import java.util.zip.ZipFile
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.deleteRecursively
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 class StandaloneBehaviorTest : AbstractStandaloneTest() {
     override val suiteName: String
@@ -158,9 +152,10 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
             val sharedPlatform = JsPlatforms.defaultJsPlatform
 
             lateinit var sourceModule: KaSourceModule
+            lateinit var stdlibModule: KaLibraryModule
             val standaloneSession = buildStandaloneAnalysisAPISession(disposable) {
                 buildKtModuleProvider {
-                    val stdlibModule = addModule(
+                    stdlibModule = addModule(
                         buildKtLibraryModule {
                             addBinaryRoot(tempKlibFolder)
                             platform = sharedPlatform
@@ -181,11 +176,21 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
             }
 
             testPackageProvider(sourceModule) {
-                checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false)
-                checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false)
-                checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = false)
-                checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = false)
-                checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = false)
+                checkPackageExistence("foo", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
+                checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false, declarationProviderModule = sourceModule)
+                checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = false, declarationProviderModule = stdlibModule)
+                checkPackageExistence(
+                    "kotlin.collections",
+                    isKotlinOnly = true,
+                    isPlatform = false,
+                    declarationProviderModule = stdlibModule,
+                )
+                checkPackageExistence(
+                    "kotlin.jvm.functions",
+                    isKotlinOnly = false,
+                    isPlatform = false,
+                    declarationProviderModule = stdlibModule,
+                )
                 checkPackageExistence("java.lang", isKotlinOnly = false, isPlatform = false)
                 checkPackageExistence("java.io", isKotlinOnly = false, isPlatform = false)
 
@@ -207,61 +212,6 @@ class StandaloneBehaviorTest : AbstractStandaloneTest() {
         } finally {
             @OptIn(ExperimentalPathApi::class)
             tempKlibFolder.deleteRecursively()
-        }
-    }
-
-    private class PackageProviderTestContext(
-        private val session: KaSession,
-        private val packageProvider: KotlinPackageProvider,
-        private val targetPlatform: TargetPlatform,
-    ) {
-        fun checkPackageExistence(name: String, isKotlinOnly: Boolean, isPlatform: Boolean) {
-            fun check(expected: Boolean, message: String, block: () -> Boolean) {
-                if (expected) {
-                    assertTrue(block(), message)
-                } else {
-                    assertFalse(block(), message.replace("must", "must not"))
-                }
-            }
-
-            val packageFqName = FqName(name)
-            check(isKotlinOnly || isPlatform, "Package '$packageFqName' must exist") {
-                packageProvider.doesPackageExist(packageFqName, targetPlatform)
-            }
-            check(isKotlinOnly || isPlatform, "Package '$packageFqName' must be visible through 'KaSession.findPackage()'") {
-                with(session) { findPackage(packageFqName) != null }
-            }
-            check(isKotlinOnly, "Kotlin-only package '$packageFqName' must exist") {
-                packageProvider.doesKotlinOnlyPackageExist(packageFqName)
-            }
-            check(isPlatform, "Platform-specific package '$packageFqName' must exist") {
-                packageProvider.doesPlatformSpecificPackageExist(packageFqName, targetPlatform)
-            }
-        }
-
-        fun checkSubpackages(name: String, expectedInside: List<String>) {
-            val packageFqName = FqName(name)
-            val actualSubpackages = packageProvider.getSubpackageNames(packageFqName, targetPlatform)
-                .mapTo(HashSet()) { it.asString() }
-
-            if (expectedInside.isEmpty()) {
-                assertEquals(emptySet(), actualSubpackages, "Subpackages of '$packageFqName' must be empty")
-            } else {
-                for (expectedSubpackage in expectedInside) {
-                    val isInside = expectedSubpackage in actualSubpackages
-                    assertTrue(isInside, "Subpackage '$name.$expectedSubpackage' must exist")
-                }
-            }
-        }
-    }
-
-    private fun testPackageProvider(module: KaModule, block: context(KaSession) PackageProviderTestContext.() -> Unit) {
-        val targetPlatform = module.targetPlatform
-
-        analyze(module) {
-            val packageProvider = module.project.createPackageProvider(analysisScope)
-            val packageProviderTestContext = PackageProviderTestContext(useSiteSession, packageProvider, targetPlatform)
-            block(packageProviderTestContext)
         }
     }
 }
