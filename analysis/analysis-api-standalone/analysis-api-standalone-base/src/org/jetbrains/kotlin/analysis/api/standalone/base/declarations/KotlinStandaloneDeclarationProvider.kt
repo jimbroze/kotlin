@@ -182,6 +182,10 @@ class KotlinStandaloneDeclarationProvider internal constructor(
  * [shouldBuildStubsForBinaryLibraries] is true. In Standalone mode, binary roots don't need to be specified because library symbols are
  * provided via class-based deserialization, not stub-based deserialization.
  *
+ * The created declaration providers compute their package names through
+ * [KotlinStandalonePackageNamesProvider][org.jetbrains.kotlin.analysis.api.standalone.base.packages.KotlinStandalonePackageNamesProvider],
+ * which must be registered as a project service with this factory instance (see its documentation).
+ *
  * @param binaryRoots Binary roots of the binary libraries that are specific to [project].
  * @param sharedBinaryRoots Binary roots that are shared between multiple different projects. This allows Kotlin tests to cache stubs for
  *  shared libraries like the Kotlin stdlib.

@@ -6,6 +6,7 @@
 package org.jetbrains.kotlin.analysis.api.standalone.base.packages
 
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtilCore
@@ -37,14 +38,17 @@ import kotlin.io.path.extension
  * package names for a JAR requires distinguishing Kotlin class files from other JVM class files, which is expensive without an index.
  * Java packages in JARs are still found through `KotlinPackageProviderBase.doesPlatformSpecificPackageExist`. Kotlin packages in
  * non-indexed JARs should be supported in a follow-up to KT-83760.
+ *
+ * The provider must be registered as a project service whenever [KotlinStandaloneDeclarationProviderFactory] or
+ * [KotlinStandalonePackageProviderFactory] is registered, with [declarationProviderFactory] being the same instance that is registered as
+ * the `KotlinDeclarationProviderFactory`.
  */
 class KotlinStandalonePackageNamesProvider(
     private val declarationProviderFactory: KotlinStandaloneDeclarationProviderFactory,
     libraryRoots: List<VirtualFile>,
 ) {
     companion object {
-        fun getInstance(project: Project): KotlinStandalonePackageNamesProvider =
-            project.getService(KotlinStandalonePackageNamesProvider::class.java)
+        fun getInstance(project: Project): KotlinStandalonePackageNamesProvider = project.service()
     }
 
     /**

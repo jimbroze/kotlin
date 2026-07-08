@@ -39,6 +39,10 @@ class KotlinStandalonePackageProvider(
     }
 }
 
+/**
+ * The created package providers compute their package names through [KotlinStandalonePackageNamesProvider], which must be registered as a
+ * project service (see its documentation).
+ */
 class KotlinStandalonePackageProviderFactory(
     private val project: Project,
 ) : KotlinCachingPackageProviderFactory(project) {
