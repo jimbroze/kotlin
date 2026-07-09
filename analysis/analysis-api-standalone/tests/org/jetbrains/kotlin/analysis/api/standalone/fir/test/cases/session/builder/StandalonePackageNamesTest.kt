@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.test.MockLibraryUtil
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.js.JsPlatforms
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
@@ -28,7 +29,6 @@ import java.nio.file.Paths
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StandalonePackageNamesTest : AbstractStandaloneTest() {
@@ -40,6 +40,8 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         val sharedPlatform = JvmPlatforms.defaultJvmPlatform
 
         lateinit var sourceModule: KaSourceModule
+        lateinit var stdlibModule: KaLibraryModule
+        lateinit var kotlinTestModule: KaLibraryModule
         buildStandaloneAnalysisAPISession(disposable) {
             buildKtModuleProvider {
                 val sdkModule = addModule(
@@ -51,7 +53,7 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
                     }
                 )
 
-                val stdlibModule = addModule(
+                stdlibModule = addModule(
                     buildKtLibraryModule {
                         addBinaryRoot(ForTestCompileRuntime.runtimeJarForTests().toPath())
                         platform = sharedPlatform
@@ -59,7 +61,7 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
                     }
                 )
 
-                val kotlinTestModule = addModule(
+                kotlinTestModule = addModule(
                     buildKtLibraryModule {
                         addBinaryRoot(ForTestCompileRuntime.kotlinTestJarForTests().toPath())
                         platform = sharedPlatform
@@ -87,13 +89,14 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
             checkPackageExistence("bar", isKotlinOnly = false, isPlatform = false, declarationProviderModule = sourceModule)
             // The package of a file without declarations must still exist (KT-83760).
             checkPackageExistence("declarationless", isKotlinOnly = true, isPlatform = false, declarationProviderModule = sourceModule)
-            checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = true)
-            checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = true)
-            checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = false, isPlatform = true)
-            // `kotlin.test` comes from a non-stdlib JAR that contains only Kotlin classes. The standalone package names provider cannot
-            // yet distinguish Kotlin packages in non-indexed JARs, so the package is only visible as a platform package (to be addressed
-            // in a follow-up to KT-83760).
-            checkPackageExistence("kotlin.test", isKotlinOnly = false, isPlatform = true)
+            checkPackageExistence("kotlin", isKotlinOnly = true, isPlatform = true, declarationProviderModule = stdlibModule)
+            checkPackageExistence("kotlin.collections", isKotlinOnly = true, isPlatform = true, declarationProviderModule = stdlibModule)
+            // `kotlin.jvm.functions` contains only compiled Kotlin classes and no top-level members, so it is only found by scanning the
+            // stdlib JAR's class files for Kotlin metadata (KT-83760).
+            checkPackageExistence("kotlin.jvm.functions", isKotlinOnly = true, isPlatform = true, declarationProviderModule = stdlibModule)
+            // `kotlin.test` comes from a non-stdlib JAR, which is not indexed: the package names are computed from the JAR contents
+            // (KT-83760).
+            checkPackageExistence("kotlin.test", isKotlinOnly = true, isPlatform = true, declarationProviderModule = kotlinTestModule)
             checkPackageExistence("java.lang", isKotlinOnly = false, isPlatform = true)
             checkPackageExistence("java.io", isKotlinOnly = false, isPlatform = true)
 
@@ -295,8 +298,13 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
         }
     }
 
+    /**
+     * Tests that every package name reported by `KotlinDeclarationProvider.computePackageNames` for a JAR library module is also known
+     * to `KotlinPackageProvider.doesKotlinOnlyPackageExist`, i.e. both providers are backed by the same centralized package name
+     * computation for non-indexed JARs (KT-83760).
+     */
     @Test
-    fun testJarLibraryModuleDeclarationProviderComputePackageNamesReturnsNull() {
+    fun testJarDeclarationProviderPackageNamesAreKnownToPackageProvider() {
         val sharedPlatform = JvmPlatforms.defaultJvmPlatform
 
         lateinit var libraryModule: KaLibraryModule
@@ -314,12 +322,114 @@ class StandalonePackageNamesTest : AbstractStandaloneTest() {
             }
         }
 
+        val packageProvider = libraryModule.project.createPackageProvider(libraryModule.contentScope)
         val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
-        val packageNames = declarationProvider.computePackageNames()
 
-        assertNull(
-            packageNames,
-            "computePackageNames() must return null for a JAR-based library module: Kotlin package names for non-indexed JARs are not yet supported by the standalone package names provider (to be addressed in a follow-up to KT-83760)",
+        val packageNamesFromDeclarationProvider = declarationProvider.computePackageNames()
+        assertNotNull(packageNamesFromDeclarationProvider, "computePackageNames() must return non-null for a JAR library module")
+
+        // Every package reported by computePackageNames() must also be known to the package provider
+        for (packageName in packageNamesFromDeclarationProvider) {
+            val fqName = FqName(packageName)
+            assertTrue(
+                packageProvider.doesKotlinOnlyPackageExist(fqName),
+                "Package '$packageName' is in computePackageNames() but doesKotlinOnlyPackageExist() returns false for it",
+            )
+        }
+
+        // Spot-check: a package with top-level members (found through the JAR's `.kotlin_module` file) and a package with only compiled
+        // classes (found by scanning class files for Kotlin metadata) must be in both providers
+        for (packageName in listOf("kotlin", "kotlin.jvm.functions")) {
+            assertTrue(
+                packageProvider.doesKotlinOnlyPackageExist(FqName(packageName)),
+                "Package '$packageName' must exist in the package provider",
+            )
+            assertTrue(packageName in packageNamesFromDeclarationProvider, "Package '$packageName' must be in computePackageNames()")
+        }
+    }
+
+    /**
+     * Tests that Kotlin package names of a non-indexed JAR are computed precisely (KT-83760): packages that contain only non-Kotlin class
+     * files must not be reported as Kotlin packages, while Kotlin packages must be reported whether they are listed in the JAR's
+     * `.kotlin_module` file (packages with top-level members) or only contain compiled Kotlin classes.
+     */
+    @Test
+    fun testMixedJarLibraryKotlinOnlyPackages() {
+        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
+        val libraryJar = MockLibraryUtil.compileJvmLibraryToJar(testDataPath("mixedJarLibrary").toString(), "mixedJarLibrary").toPath()
+
+        lateinit var sourceModule: KaSourceModule
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(libraryJar)
+                        platform = sharedPlatform
+                        libraryName = "mixedJarLibrary"
+                    }
+                )
+
+                platform = sharedPlatform
+                sourceModule = addModule(
+                    buildKtSourceModule {
+                        addSourceRoot(testDataPath("packageProvider"))
+                        addRegularDependency(libraryModule)
+                        platform = sharedPlatform
+                        moduleName = "source"
+                    }
+                )
+            }
+        }
+
+        testPackageProvider(sourceModule) {
+            // A package with top-level members, listed in the JAR's `.kotlin_module` file.
+            checkPackageExistence("mixedlib.facades", isKotlinOnly = true, isPlatform = true, declarationProviderModule = libraryModule)
+            // A package with only a compiled Kotlin class, found by scanning class files for Kotlin metadata.
+            checkPackageExistence("mixedlib.classes", isKotlinOnly = true, isPlatform = true, declarationProviderModule = libraryModule)
+            // A package with only a Java class must not be reported as a Kotlin package.
+            checkPackageExistence("mixedlib.javaonly", isKotlinOnly = false, isPlatform = true, declarationProviderModule = libraryModule)
+        }
+    }
+
+    /**
+     * Tests that a JAR without any Kotlin class files reports an empty — but known — Kotlin package set (KT-83760).
+     */
+    @Test
+    fun testJavaOnlyJarLibraryHasNoKotlinPackages() {
+        val sharedPlatform = JvmPlatforms.defaultJvmPlatform
+        val libraryJar =
+            MockLibraryUtil.compileJvmLibraryToJar(testDataPath("javaOnlyJarLibrary").toString(), "javaOnlyJarLibrary").toPath()
+
+        lateinit var libraryModule: KaLibraryModule
+        buildStandaloneAnalysisAPISession(disposable) {
+            buildKtModuleProvider {
+                libraryModule = addModule(
+                    buildKtLibraryModule {
+                        addBinaryRoot(libraryJar)
+                        platform = sharedPlatform
+                        libraryName = "javaOnlyJarLibrary"
+                    }
+                )
+
+                platform = sharedPlatform
+            }
+        }
+
+        val packageProvider = libraryModule.project.createPackageProvider(libraryModule.contentScope)
+        val declarationProvider = libraryModule.project.createDeclarationProvider(libraryModule.contentScope, libraryModule)
+
+        val packageNames = declarationProvider.computePackageNames()
+        assertNotNull(packageNames, "computePackageNames() must return non-null for a JAR library module")
+        assertEquals(emptySet(), packageNames, "A Java-only JAR must not contribute any Kotlin package names")
+
+        assertFalse(
+            packageProvider.doesKotlinOnlyPackageExist(FqName("javaonly")),
+            "The package of a Java-only JAR must not exist as a Kotlin-only package",
+        )
+        assertTrue(
+            packageProvider.doesPlatformSpecificPackageExist(FqName("javaonly"), sharedPlatform),
+            "The package of a Java-only JAR must exist as a platform package",
         )
     }
 
