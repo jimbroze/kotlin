@@ -131,13 +131,11 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
 
             val declarationProviderFactory = KotlinStandaloneDeclarationProviderFactory(
                 project,
-                testServices.environmentManager.getApplicationEnvironment(),
                 testKtFiles,
                 binaryRoots = mainBinaryRoots + mainBinaryVirtualFiles,
                 sharedBinaryRoots = sharedBinaryRoots + sharedBinaryVirtualFiles,
                 skipBuiltins = testServices.moduleStructure.allDirectives.contains(NO_RUNTIME),
                 shouldBuildStubsForBinaryLibraries = shouldBuildStubsForBinaryLibraries,
-                shouldComputeBinaryLibraryPackageSets = true,
                 postponeIndexing = true,
             )
 
@@ -148,7 +146,7 @@ object AnalysisApiBaseTestServiceRegistrar : AnalysisApiTestServiceRegistrar() {
 
             val packageNamesProvider = KotlinStandalonePackageNamesProvider(
                 declarationProviderFactory = declarationProviderFactory,
-                libraryRoots = sharedBinaryRoots,
+                libraryRoots = mainBinaryRoots + mainBinaryVirtualFiles + sharedBinaryRoots + sharedBinaryVirtualFiles,
             )
             registerService(KotlinStandalonePackageNamesProvider::class.java, packageNamesProvider)
 
